@@ -1,28 +1,53 @@
-.PHONY: run build test test-race vet tidy clean
+.PHONY: test cache consumer core decision microservice observability selector token validation
 
-# Runs the self-contained demo API (bundled mock STS + demo endpoints).
-run:
-	go run ./cmd
-
-# Builds the demo binary into ./bin/sts-token-management.
-build:
-	go build -o bin/sts-token-management ./cmd
-
-# Runs the unit test suite.
 test:
-	go test ./...
+	@echo "Iniciando testes da biblioteca go-core-sdk ..."; \
+	 go test -v ./...;
 
-# Runs the unit test suite with the race detector (recommended).
-test-race:
-	go test -race ./...
+cache:
+	@echo "Executando exemplo de uso do services/cache ..."; \
+	 go run samples/cache/main.go;
 
-# Runs go vet across the module.
-vet:
-	go vet ./...
+consumer:
+	@echo "Executando exemplo de uso do services/consumer ..."; \
+	 go run samples/consumer/main.go;
 
-# Tidies go.mod/go.sum.
-tidy:
-	go mod tidy
+core:
+	@echo "Executando exemplo de uso do core ..."; \
+	 go run samples/core/main.go;
 
-clean:
-	rm -rf bin
+decision:
+	@echo "Executando exemplo de uso do services/decision ..."; \
+	 go run samples/decision/main.go;
+
+env:
+	@echo "Executando exemplo de uso do services/environment ..."; \
+	 go run samples/environment/main.go;
+
+mcp-proxy:
+	@echo "Executando exemplo de uso do services/mcp/proxy ..."; \
+	 go run samples/mcp_proxy/main.go;
+
+microservice:
+	@echo "Executando exemplo de uso do services/microservice ..."; \
+	 go run samples/microservice/main.go;
+
+observability:
+	@echo "Executando exemplo de uso do services/observability ..."; \
+	 go run samples/observability/main.go;
+
+parser:
+	@echo "Executando exemplo de uso do services/parser ..."; \
+	 go run samples/parser/main.go;
+
+selector:
+	@echo "Executando exemplo de uso do services/selector ..."; \
+	 go run samples/selector/main.go;
+
+token:
+	@echo "Executando exemplo de uso do services/token ..."; \
+	 go run samples/token/main.go;
+
+validation:
+	@echo "Executando exemplo de uso do services/validation ..."; \
+	 go run samples/validation/main.go;

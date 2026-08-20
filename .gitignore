@@ -1,3 +1,3 @@
-bin/
-*.log
+*.out
+.instructions
 .DS_Store
