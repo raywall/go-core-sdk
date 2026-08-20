@@ -43,6 +43,7 @@ type options struct {
 	awsConfig     *aws.Config
 	dynamoDB      types.DynamoDBClient
 	s3            types.S3Client
+	secrets       types.SecretsManagerClient
 	sqs           types.SQSClient
 }
 
@@ -99,6 +100,15 @@ func WithS3Client(client types.S3Client) Option {
 	return func(options *options) {
 		if client != nil {
 			options.s3 = client
+		}
+	}
+}
+
+// WithSecretsManagerClient configures the Secrets Manager client used by Consumer.
+func WithSecretsManagerClient(client types.SecretsManagerClient) Option {
+	return func(options *options) {
+		if client != nil {
+			options.secrets = client
 		}
 	}
 }

@@ -22,11 +22,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/raywall/go-core-sdk/services/consumer/types"
 )
 
-// Consumer coordinates outbound REST, DynamoDB, S3 and SQS integrations.
+// Consumer coordinates outbound REST, DynamoDB, S3, Secrets Manager and SQS integrations.
 //
 // Consumer is safe for concurrent use. Lazy AWS client construction is guarded
 // by an internal mutex; the lock is not held while performing outbound I/O.
@@ -40,6 +41,7 @@ type Consumer struct {
 	awsCfg   *aws.Config
 	dynamoDB types.DynamoDBClient
 	s3       types.S3Client
+	secrets  types.SecretsManagerClient
 	sqs      types.SQSClient
 }
 
@@ -73,6 +75,7 @@ func New(config Config, configurers ...Option) (*Consumer, error) {
 		awsCfg:        options.awsConfig,
 		dynamoDB:      options.dynamoDB,
 		s3:            options.s3,
+		secrets:       options.secrets,
 		sqs:           options.sqs,
 	}, nil
 }
@@ -148,6 +151,30 @@ func (c *Consumer) s3Client(ctx context.Context) (types.S3Client, error) {
 		c.s3 = client
 	}
 	cached := c.s3
+	c.mu.Unlock()
+	return cached, nil
+}
+
+func (c *Consumer) secretsManagerClient(ctx context.Context) (types.SecretsManagerClient, error) {
+	c.mu.Lock()
+	if c.secrets != nil {
+		client := c.secrets
+		c.mu.Unlock()
+		return client, nil
+	}
+	c.mu.Unlock()
+
+	cfg, err := c.awsConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	client := secretsmanager.NewFromConfig(cfg)
+
+	c.mu.Lock()
+	if c.secrets == nil {
+		c.secrets = client
+	}
+	cached := c.secrets
 	c.mu.Unlock()
 	return cached, nil
 }

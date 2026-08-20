@@ -120,6 +120,30 @@ func (e S3Error) Unwrap() error {
 	return e.Err
 }
 
+// SecretsManagerError is returned when a Secrets Manager operation fails.
+type SecretsManagerError struct {
+	// Operation identifies the Secrets Manager operation.
+	Operation string
+	// Err is the wrapped Secrets Manager, AWS config or decode error.
+	Err error
+}
+
+// Error implements the error interface.
+func (e SecretsManagerError) Error() string {
+	if e.Operation == "" {
+		return "secrets manager operation failed"
+	}
+	if e.Err == nil {
+		return "secrets manager operation failed: " + e.Operation
+	}
+	return fmt.Sprintf("secrets manager operation failed: %s: %v", e.Operation, e.Err)
+}
+
+// Unwrap returns the wrapped Secrets Manager error.
+func (e SecretsManagerError) Unwrap() error {
+	return e.Err
+}
+
 // SQSError is returned when an SQS operation fails.
 type SQSError struct {
 	// Operation identifies the SQS operation.

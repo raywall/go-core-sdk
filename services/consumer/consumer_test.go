@@ -28,6 +28,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	dynamodbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/raywall/go-core-sdk/services/consumer"
@@ -204,6 +205,65 @@ func TestS3OperationsUseClient(t *testing.T) {
 	}
 }
 
+func TestSecretsManagerOperationsUseClientAndDecodeJSON(t *testing.T) {
+	t.Parallel()
+
+	secretsClient := &fakeSecretsManagerClient{}
+	client, err := consumer.New(consumer.Config{}, consumer.WithLogger(discardLogger()), consumer.WithSecretsManagerClient(secretsClient))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	var secret databaseSecret
+	getOutput, err := client.GetSecretJSON(context.Background(), types.SecretGetInput{SecretID: "orders/database"}, &secret)
+	if err != nil {
+		t.Fatalf("GetSecretJSON: %v", err)
+	}
+	if getOutput.Name != "orders/database" || secret.Username != "orders" || secret.Password != "secret" {
+		t.Fatalf("get output = %#v, target = %#v", getOutput, secret)
+	}
+
+	putOutput, err := client.PutSecret(context.Background(), types.SecretPutInput{
+		SecretID:           "orders/database",
+		SecretString:       `{"username":"orders","password":"new"}`,
+		ClientRequestToken: "token-1",
+		VersionStages:      []string{"AWSCURRENT"},
+	})
+	if err != nil {
+		t.Fatalf("PutSecret: %v", err)
+	}
+	if putOutput.VersionID != "version-put" || aws.ToString(secretsClient.putInput.SecretString) == "" {
+		t.Fatalf("put output = %#v, input = %#v", putOutput, secretsClient.putInput)
+	}
+
+	updateOutput, err := client.UpdateSecret(context.Background(), types.SecretUpdateInput{
+		SecretID:     "orders/database",
+		Description:  "database credentials",
+		SecretString: `{"username":"orders","password":"updated"}`,
+	})
+	if err != nil {
+		t.Fatalf("UpdateSecret: %v", err)
+	}
+	if updateOutput.VersionID != "version-update" || aws.ToString(secretsClient.updateInput.Description) != "database credentials" {
+		t.Fatalf("update output = %#v, input = %#v", updateOutput, secretsClient.updateInput)
+	}
+}
+
+func TestSecretsManagerOperationReturnsTypedError(t *testing.T) {
+	t.Parallel()
+
+	client, err := consumer.New(consumer.Config{}, consumer.WithLogger(discardLogger()), consumer.WithSecretsManagerClient(&fakeSecretsManagerClient{err: errors.New("boom")}))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = client.GetSecret(context.Background(), types.SecretGetInput{SecretID: "orders/database"})
+	var secretsErr types.SecretsManagerError
+	if !errors.As(err, &secretsErr) {
+		t.Fatalf("err = %T, want SecretsManagerError", err)
+	}
+}
+
 func TestSQSOperationsUseClient(t *testing.T) {
 	t.Parallel()
 
@@ -271,6 +331,11 @@ type record struct {
 	Name string `dynamodbav:"Name"`
 }
 
+type databaseSecret struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 type fakeDynamoDBClient struct {
 	putInput *dynamodb.PutItemInput
 }
@@ -321,6 +386,50 @@ func (c *fakeS3Client) GetObject(_ context.Context, _ *s3.GetObjectInput, _ ...f
 		Body:        io.NopCloser(strings.NewReader("hello-from-s3")),
 		ContentType: aws.String("text/plain"),
 		Metadata:    map[string]string{"source": "test"},
+	}, nil
+}
+
+type fakeSecretsManagerClient struct {
+	err         error
+	putInput    *secretsmanager.PutSecretValueInput
+	updateInput *secretsmanager.UpdateSecretInput
+}
+
+func (c *fakeSecretsManagerClient) GetSecretValue(_ context.Context, _ *secretsmanager.GetSecretValueInput, _ ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	return &secretsmanager.GetSecretValueOutput{
+		ARN:           aws.String("arn:aws:secretsmanager:us-east-1:123:secret:orders/database"),
+		Name:          aws.String("orders/database"),
+		VersionId:     aws.String("version-get"),
+		VersionStages: []string{"AWSCURRENT"},
+		SecretString:  aws.String(`{"username":"orders","password":"secret"}`),
+	}, nil
+}
+
+func (c *fakeSecretsManagerClient) PutSecretValue(_ context.Context, input *secretsmanager.PutSecretValueInput, _ ...func(*secretsmanager.Options)) (*secretsmanager.PutSecretValueOutput, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	c.putInput = input
+	return &secretsmanager.PutSecretValueOutput{
+		ARN:           aws.String("arn:aws:secretsmanager:us-east-1:123:secret:orders/database"),
+		Name:          aws.String("orders/database"),
+		VersionId:     aws.String("version-put"),
+		VersionStages: []string{"AWSCURRENT"},
+	}, nil
+}
+
+func (c *fakeSecretsManagerClient) UpdateSecret(_ context.Context, input *secretsmanager.UpdateSecretInput, _ ...func(*secretsmanager.Options)) (*secretsmanager.UpdateSecretOutput, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	c.updateInput = input
+	return &secretsmanager.UpdateSecretOutput{
+		ARN:       aws.String("arn:aws:secretsmanager:us-east-1:123:secret:orders/database"),
+		Name:      aws.String("orders/database"),
+		VersionId: aws.String("version-update"),
 	}, nil
 }
 

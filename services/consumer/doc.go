@@ -13,7 +13,7 @@
 // Package consumer provides a small integration facade for microservices.
 //
 // The service supports REST calls with custom headers and optional token
-// injection, plus convenience methods for common DynamoDB, S3 and SQS
+// injection, plus convenience methods for common DynamoDB, S3, Secrets Manager and SQS
 // operations. AWS clients can be supplied explicitly for tests, tracing or
 // custom transports; otherwise they are created lazily from the AWS SDK default
 // configuration chain.

@@ -1,21 +1,238 @@
 # go-core-sdk
 
-`go-core-sdk` reune services Go autocontidos para uso em aplicacoes e bibliotecas.
+`go-core-sdk` reune packages e services Go autocontidos para uso em aplicacoes e bibliotecas.
+
+## Packages
+
+| Package | Import | Descricao |
+| --- | --- | --- |
+| Config | `github.com/raywall/go-core-sdk/config` | Centraliza carregamento de configuracoes compartilhadas, com loaders/resolvers inspirados no AWS SDK. |
+| Core | `github.com/raywall/go-core-sdk/core` | Compoe services em um runtime de aplicacao, resolvendo secrets e gerenciando lifecycle de token managers. |
 
 ## Services
 
 | Service | Package | Descricao |
 | --- | --- | --- |
 | Cache | `github.com/raywall/go-core-sdk/services/cache` | Mantem entidades temporarias em memoria com TTL, consulta, limpeza e expurgo automatico. |
-| Consumer | `github.com/raywall/go-core-sdk/services/consumer` | Simplifica chamadas REST com token opcional e operacoes comuns de DynamoDB, S3 e SQS. |
+| Consumer | `github.com/raywall/go-core-sdk/services/consumer` | Simplifica chamadas REST com token opcional e operacoes comuns de DynamoDB, S3, Secrets Manager e SQS. |
 | Decision | `github.com/raywall/go-core-sdk/services/decision` | Avalia regras de decisao em CEL expression contra multiplas entidades com cache de compilacao. |
+| Environment | `github.com/raywall/go-core-sdk/services/environment` | Facilita leitura de variaveis de ambiente obrigatorias ou com valores padrao. |
+| MCP Proxy | `github.com/raywall/go-core-sdk/services/mcp/proxy` | Expoe servicos HTTP existentes como tools MCP-friendly para aceleracao tatica de agentes. |
+| Observability | `github.com/raywall/go-core-sdk/services/observability` | Centraliza logs JSON estruturados e envio simplificado de custom metrics para Datadog. |
+| Parser | `github.com/raywall/go-core-sdk/services/parser` | Converte DTOs, entidades, maps e colecoes usando JSON como formato intermediario e tags `json` compativeis. |
 | Selector | `github.com/raywall/go-core-sdk/services/selector` | Ordena itens financeiros por atributo e seleciona pagamentos integrais ou parciais com valores em unidade minima. |
 | Token | `github.com/raywall/go-core-sdk/services/token` | Gerencia tokens STS com client credentials, renovacao automatica, refresh manual e logs estruturados em JSON. |
 | Validation | `github.com/raywall/go-core-sdk/services/validation` | Valida structs e substructs com validator/v10, retornando todos os campos invalidos em um erro tipado. |
 
+## Config e Core
+
+Os packages `config` e `core` ajudam quando uma aplicacao precisa coordenar varios services no mesmo runtime. O `config` carrega valores compartilhados e projeta configuracoes especificas; o `core` monta os services, resolve credenciais em Secrets Manager quando configurado e gerencia o ciclo de vida dos token managers.
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/raywall/go-core-sdk/config"
+	"github.com/raywall/go-core-sdk/core"
+)
+
+func main() {
+	ctx := context.Background()
+
+	cfg, err := config.Load(ctx,
+		config.WithEnv("APP"),
+		config.WithAWSDefaultConfig(),
+		config.WithServiceName("orders-file-worker"),
+		config.WithToken("partner-api", config.TokenConfig{
+			BaseURL:  "https://sts.example.com",
+			Endpoint: "/oauth/token",
+			SecretID: "orders/partner-api",
+		}),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	runtime, err := core.New(ctx, cfg, core.WithTokenAutoStart(true))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer runtime.Stop()
+
+	consumer := runtime.Consumer()
+	validator := runtime.Validator()
+	decision := runtime.Decision()
+
+	_, _, _ = consumer, validator, decision
+}
+```
+
+Esse uso e opcional. Cada service continua podendo ser importado e configurado diretamente.
+
+## Samples
+
+Os exemplos em `samples/` sao executaveis com `go run`. O sample composto em `samples/microservice` demonstra um fluxo local de microservico que combina `config`, `core`, Secrets Manager, token management, S3, REST, validation, selector, decision, SQS, logs estruturados e metricas customizadas.
+
+```sh
+go run ./samples/microservice
+```
+
+## Observability
+
+O service `observability` facilita logs JSON estruturados e custom metrics para Datadog via DogStatsD. Ao registrar uma metrica, o service aplica o prefixo configurado, combina tags padrao com tags adicionais e adiciona sempre a tag `env:<environment>`.
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/raywall/go-core-sdk/services/observability"
+)
+
+func main() {
+	ctx := context.Background()
+	telemetry, err := observability.New(observability.Config{
+		ServiceName:    "orders-worker",
+		Environment:    "prod",
+		Version:        "1.0.0",
+		MetricPrefix:   "orders",
+		DatadogAddress: "127.0.0.1:8125",
+		DefaultTags:    []string{"team:platform"},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer telemetry.Close()
+
+	telemetry.Logger().InfoContext(ctx, "file_received", "bucket", "orders-files")
+	if err := telemetry.Increment(ctx, "events.received", "source:s3"); err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+## MCP Proxy
+
+O service `mcp/proxy` permite mapear endpoints HTTP ja existentes, como API Gateway, Lambda URL, ECS ou servicos atras de Load Balancer, para contratos de tools que podem ser expostos por um MCP server. Ele e uma solucao tatica para acelerar agentes enquanto uma integracao MCP definitiva e desenhada.
+
+```go
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"log"
+	"net/http"
+
+	"github.com/raywall/go-core-sdk/services/mcp/proxy"
+	proxytypes "github.com/raywall/go-core-sdk/services/mcp/proxy/types"
+)
+
+func main() {
+	ctx := context.Background()
+	mcpProxy, err := proxy.New(proxy.Config{
+		BaseURL: "https://api.example.com",
+		Tools: []proxytypes.Tool{
+			{
+				Name:        "simulate_payment",
+				Description: "Simulate a payment before creating the final event.",
+				Method:      http.MethodPost,
+				Path:        "/payments/simulate",
+				InputSchema: json.RawMessage(`{"type":"object"}`),
+			},
+		},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	output, err := mcpProxy.Invoke(ctx, proxytypes.InvokeInput{
+		ToolName:  "simulate_payment",
+		Arguments: map[string]any{"amount": 120000},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_ = output
+}
+```
+
+## Environment
+
+O service `environment` simplifica a leitura de variaveis de ambiente obrigatorias ou opcionais com default. Variaveis existentes com valor vazio sao preservadas como existentes.
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/raywall/go-core-sdk/services/environment"
+)
+
+func main() {
+	ctx := context.Background()
+
+	serviceName, err := environment.Get(ctx, "APP_SERVICE_NAME")
+	if err != nil {
+		log.Fatal(err)
+	}
+	environmentName, err := environment.GetDefault(ctx, "APP_ENVIRONMENT", "local")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, _ = serviceName, environmentName
+}
+```
+
+## Parser
+
+O service `parser` facilita a conversao de um DTO ou entidade em outra estrutura quando ambos compartilham tags `json` compativeis. Internamente ele serializa a origem para JSON e decodifica esse JSON no destino.
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/raywall/go-core-sdk/services/parser"
+)
+
+type ProposalDTO struct {
+	ID     string `json:"id"`
+	Amount int64  `json:"amount"`
+}
+
+type Proposal struct {
+	ID     string `json:"id"`
+	Amount int64  `json:"amount"`
+}
+
+func main() {
+	proposal, err := parser.ParseAs[Proposal](context.Background(), ProposalDTO{
+		ID:     "proposal-123",
+		Amount: 75000,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_ = proposal
+}
+```
+
 ## Consumer
 
-O service `consumer` centraliza integracoes comuns de microservicos: chamadas REST com headers e body flexiveis, injecao opcional de Authorization a partir do `services/token`, e operacoes simples em DynamoDB, S3 e SQS usando AWS SDK v2.
+O service `consumer` centraliza integracoes comuns de microservicos: chamadas REST com headers e body flexiveis, injecao opcional de Authorization a partir do `services/token`, e operacoes simples em DynamoDB, S3, Secrets Manager e SQS usando AWS SDK v2.
 
 ```go
 package main
@@ -29,6 +246,11 @@ import (
 	consumertypes "github.com/raywall/go-core-sdk/services/consumer/types"
 	"github.com/raywall/go-core-sdk/services/token"
 )
+
+type DatabaseSecret struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
 
 func main() {
 	ctx := context.Background()
@@ -74,6 +296,14 @@ func main() {
 		Body:        response.Body,
 		ContentType: "application/json",
 	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var database DatabaseSecret
+	_, err = client.GetSecretJSON(ctx, consumertypes.SecretGetInput{
+		SecretID: "orders/database",
+	}, &database)
 	if err != nil {
 		log.Fatal(err)
 	}

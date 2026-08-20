@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	dynamodbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/raywall/go-core-sdk/services/consumer"
@@ -40,6 +41,7 @@ func main() {
 		consumer.WithTokenProvider(staticTokenProvider{}),
 		consumer.WithDynamoDBClient(&fakeDynamoDBClient{}),
 		consumer.WithS3Client(&fakeS3Client{}),
+		consumer.WithSecretsManagerClient(&fakeSecretsManagerClient{}),
 		consumer.WithSQSClient(&fakeSQSClient{}),
 	)
 	if err != nil {
@@ -108,6 +110,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	var database databaseSecret
+	if _, err := client.GetSecretJSON(ctx, consumertypes.SecretGetInput{SecretID: "orders/database"}, &database); err != nil {
+		log.Fatal(err)
+	}
+
 	fmt.Printf("restStatus=%d order=%s found=%t storedStatus=%s s3ETag=%s sqsMessage=%s received=%d\n",
 		restResponse.StatusCode,
 		order["id"],
@@ -117,6 +124,7 @@ func main() {
 		sqsOutput.MessageID,
 		len(receiveOutput.Messages),
 	)
+	fmt.Printf("secretUsername=%s\n", database.Username)
 }
 
 type staticTokenProvider struct{}
@@ -134,6 +142,11 @@ func (staticToken) ToString() string {
 type orderRecord struct {
 	ID     string `dynamodbav:"id"`
 	Status string `dynamodbav:"status"`
+}
+
+type databaseSecret struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type fakeDynamoDBClient struct{}
@@ -179,6 +192,34 @@ func (c *fakeS3Client) GetObject(_ context.Context, _ *s3.GetObjectInput, _ ...f
 	return &s3.GetObjectOutput{
 		Body:        io.NopCloser(strings.NewReader(`{"id":"ORDER#1","status":"CREATED"}`)),
 		ContentType: aws.String("application/json"),
+	}, nil
+}
+
+type fakeSecretsManagerClient struct{}
+
+func (c *fakeSecretsManagerClient) GetSecretValue(_ context.Context, _ *secretsmanager.GetSecretValueInput, _ ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
+	return &secretsmanager.GetSecretValueOutput{
+		ARN:           aws.String("arn:aws:secretsmanager:us-east-1:123:secret:orders/database"),
+		Name:          aws.String("orders/database"),
+		VersionId:     aws.String("version-1"),
+		VersionStages: []string{"AWSCURRENT"},
+		SecretString:  aws.String(`{"username":"orders","password":"secret"}`),
+	}, nil
+}
+
+func (c *fakeSecretsManagerClient) PutSecretValue(_ context.Context, _ *secretsmanager.PutSecretValueInput, _ ...func(*secretsmanager.Options)) (*secretsmanager.PutSecretValueOutput, error) {
+	return &secretsmanager.PutSecretValueOutput{
+		ARN:       aws.String("arn:aws:secretsmanager:us-east-1:123:secret:orders/database"),
+		Name:      aws.String("orders/database"),
+		VersionId: aws.String("version-2"),
+	}, nil
+}
+
+func (c *fakeSecretsManagerClient) UpdateSecret(_ context.Context, _ *secretsmanager.UpdateSecretInput, _ ...func(*secretsmanager.Options)) (*secretsmanager.UpdateSecretOutput, error) {
+	return &secretsmanager.UpdateSecretOutput{
+		ARN:       aws.String("arn:aws:secretsmanager:us-east-1:123:secret:orders/database"),
+		Name:      aws.String("orders/database"),
+		VersionId: aws.String("version-3"),
 	}, nil
 }
 

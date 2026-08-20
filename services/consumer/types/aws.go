@@ -17,6 +17,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
@@ -38,6 +39,16 @@ type S3Client interface {
 	PutObject(context.Context, *s3.PutObjectInput, ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 	// GetObject retrieves an object from a bucket.
 	GetObject(context.Context, *s3.GetObjectInput, ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+}
+
+// SecretsManagerClient defines the Secrets Manager operations used by Consumer.
+type SecretsManagerClient interface {
+	// GetSecretValue retrieves the current or requested value of a secret.
+	GetSecretValue(context.Context, *secretsmanager.GetSecretValueInput, ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)
+	// PutSecretValue adds a new version value to an existing secret.
+	PutSecretValue(context.Context, *secretsmanager.PutSecretValueInput, ...func(*secretsmanager.Options)) (*secretsmanager.PutSecretValueOutput, error)
+	// UpdateSecret updates secret metadata and optionally creates a new secret value.
+	UpdateSecret(context.Context, *secretsmanager.UpdateSecretInput, ...func(*secretsmanager.Options)) (*secretsmanager.UpdateSecretOutput, error)
 }
 
 // SQSClient defines the SQS operations used by Consumer.

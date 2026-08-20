@@ -4,17 +4,20 @@ go 1.25.0
 
 require (
 	cel.dev/cel-go v0.32.0
+	github.com/DataDog/datadog-go/v5 v5.9.1
 	github.com/aws/aws-sdk-go-v2 v1.43.6
 	github.com/aws/aws-sdk-go-v2/config v1.32.37
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.61
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.63.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.107.2
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.44.6
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.46.6
 	github.com/go-playground/validator/v10 v10.30.3
 )
 
 require (
 	cel.dev/expr v0.25.1 // indirect
+	github.com/Microsoft/go-winio v0.5.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.18 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.36 // indirect
