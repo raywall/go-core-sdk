@@ -7,10 +7,86 @@
 | Service | Package | Descricao |
 | --- | --- | --- |
 | Cache | `github.com/raywall/go-core-sdk/services/cache` | Mantem entidades temporarias em memoria com TTL, consulta, limpeza e expurgo automatico. |
+| Consumer | `github.com/raywall/go-core-sdk/services/consumer` | Simplifica chamadas REST com token opcional e operacoes comuns de DynamoDB, S3 e SQS. |
 | Decision | `github.com/raywall/go-core-sdk/services/decision` | Avalia regras de decisao em CEL expression contra multiplas entidades com cache de compilacao. |
 | Selector | `github.com/raywall/go-core-sdk/services/selector` | Ordena itens financeiros por atributo e seleciona pagamentos integrais ou parciais com valores em unidade minima. |
 | Token | `github.com/raywall/go-core-sdk/services/token` | Gerencia tokens STS com client credentials, renovacao automatica, refresh manual e logs estruturados em JSON. |
 | Validation | `github.com/raywall/go-core-sdk/services/validation` | Valida structs e substructs com validator/v10, retornando todos os campos invalidos em um erro tipado. |
+
+## Consumer
+
+O service `consumer` centraliza integracoes comuns de microservicos: chamadas REST com headers e body flexiveis, injecao opcional de Authorization a partir do `services/token`, e operacoes simples em DynamoDB, S3 e SQS usando AWS SDK v2.
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+	"net/http"
+
+	"github.com/raywall/go-core-sdk/services/consumer"
+	consumertypes "github.com/raywall/go-core-sdk/services/consumer/types"
+	"github.com/raywall/go-core-sdk/services/token"
+)
+
+func main() {
+	ctx := context.Background()
+
+	manager, err := token.NewManager(token.Config{
+		BaseURL:      "https://sts.example.com",
+		Endpoint:     "/oauth/token",
+		ClientID:     "uuid",
+		ClientSecret: "secret",
+		ValidateSSL:  true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	client, err := consumer.New(consumer.Config{AWSRegion: "us-east-1"},
+		consumer.WithTokenProvider(manager),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	response, err := client.REST(http.MethodPost, "https://api.example.com/orders").
+		WithHeader("X-App", "orders-api").
+		WithBody(map[string]any{"customerId": "123"}).
+		WithToken().
+		Do(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = client.PutDynamoDB(ctx, consumertypes.DynamoDBPutInput{
+		TableName: "orders",
+		Item:      map[string]any{"PK": "ORDER#1", "status": "CREATED"},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, err = client.PutS3(ctx, consumertypes.S3PutInput{
+		Bucket:      "orders-files",
+		Key:         "ORDER#1.json",
+		Body:        response.Body,
+		ContentType: "application/json",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, err = client.SendSQS(ctx, consumertypes.SQSSendInput{
+		QueueURL: "https://sqs.us-east-1.amazonaws.com/123/orders",
+		Body:     string(response.Body),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+```
 
 ## Cache
 
