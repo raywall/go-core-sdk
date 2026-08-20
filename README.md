@@ -6,10 +6,59 @@
 
 | Service | Package | Descricao |
 | --- | --- | --- |
+| Cache | `github.com/raywall/go-core-sdk/services/cache` | Mantem entidades temporarias em memoria com TTL, consulta, limpeza e expurgo automatico. |
 | Decision | `github.com/raywall/go-core-sdk/services/decision` | Avalia regras de decisao em CEL expression contra multiplas entidades com cache de compilacao. |
 | Selector | `github.com/raywall/go-core-sdk/services/selector` | Ordena itens financeiros por atributo e seleciona pagamentos integrais ou parciais com valores em unidade minima. |
 | Token | `github.com/raywall/go-core-sdk/services/token` | Gerencia tokens STS com client credentials, renovacao automatica, refresh manual e logs estruturados em JSON. |
 | Validation | `github.com/raywall/go-core-sdk/services/validation` | Valida structs e substructs com validator/v10, retornando todos os campos invalidos em um erro tipado. |
+
+## Cache
+
+O service `cache` cria um cache temporario em memoria para armazenar entidades durante o ciclo de vida do runtime. Ele e util para runtimes reaproveitados, como Lambda warm starts, reduzindo chamadas repetidas a APIs ou bases externas.
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+	"time"
+
+	"github.com/raywall/go-core-sdk/services/cache"
+)
+
+type Customer struct {
+	ID   string
+	Name string
+}
+
+func main() {
+	store, err := cache.New[Customer](cache.Config{
+		DefaultTTL:      5 * time.Minute,
+		CleanupInterval: time.Minute,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+	if err := store.Start(ctx); err != nil {
+		log.Fatal(err)
+	}
+	defer store.Stop()
+
+	if err := store.Add(ctx, "customer-123", Customer{ID: "customer-123", Name: "Ana"}); err != nil {
+		log.Fatal(err)
+	}
+
+	customer, found, err := store.Get(ctx, "customer-123")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, _ = customer, found
+}
+```
 
 ## Decision
 
