@@ -6,8 +6,66 @@
 
 | Service | Package | Descricao |
 | --- | --- | --- |
+| Selector | `github.com/raywall/go-core-sdk/services/selector` | Ordena itens financeiros por atributo e seleciona pagamentos integrais ou parciais com valores em unidade minima. |
 | Token | `github.com/raywall/go-core-sdk/services/token` | Gerencia tokens STS com client credentials, renovacao automatica, refresh manual e logs estruturados em JSON. |
 | Validation | `github.com/raywall/go-core-sdk/services/validation` | Valida structs e substructs com validator/v10, retornando todos os campos invalidos em um erro tipado. |
+
+## Selector
+
+O service `selector` ordena itens por um atributo configurado e aplica um valor disponivel sobre essa lista ordenada. Valores financeiros usam `int64` na unidade minima do dominio, por exemplo centavos.
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+	"time"
+
+	"github.com/raywall/go-core-sdk/services/selector"
+	selectortypes "github.com/raywall/go-core-sdk/services/selector/types"
+)
+
+type Installment struct {
+	Number      int       `json:"number"`
+	Status      string    `json:"status"`
+	DueDate     time.Time `json:"dueDate"`
+	AmountCents int64     `json:"amountCents"`
+}
+
+func main() {
+	installments := []Installment{
+		{Number: 2, Status: "OPEN", DueDate: mustDate("2026-02-01"), AmountCents: 10000},
+		{Number: 1, Status: "OPEN", DueDate: mustDate("2026-01-01"), AmountCents: 10000},
+	}
+
+	ordered, result, err := selector.SortAndSelect(context.Background(), installments,
+		selectortypes.SortConfig{
+			Path:      "dueDate",
+			Kind:      selectortypes.KindTime,
+			Direction: selectortypes.Ascending,
+		},
+		selectortypes.SelectionConfig{
+			AmountPath:      "amountCents",
+			AvailableAmount: 15000,
+			Mode:            selectortypes.ModePartial,
+		},
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, _ = ordered, result
+}
+
+func mustDate(value string) time.Time {
+	parsed, err := time.Parse(time.DateOnly, value)
+	if err != nil {
+		panic(err)
+	}
+	return parsed
+}
+```
 
 ## Token
 
