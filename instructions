@@ -1,0 +1,17 @@
+voce é um engenheiro senior com alto conhecimento em go e construção de bibliotecas/lib.
+services/funcionalidades criadas dentro do package service/ deve ser auto-contido, de forma que o usuário possa importar um service e usar, sem precisar importar todos.
+gere um README.md na raiz do projeto (mesmo diretório do instructions.md)
+
+para cada service:
+  - um service pode usar o package config sempre que necessário
+  - as funcionalidades centrais que não precisam ser usadas externamente ficam organizadas dentro do internal de cada service
+  - as entidades de cada service que precisam ser expostas para serem usadas pelos usuários devem ficar no package types de cada service
+  - os erros são padronizados e ficam concentrados no arquivo errors.go do package types
+  - cada service deve ter um arquivo doc.go com os comentários do package explicando o service
+  - todos os blocos de código devem ser muito bem documentados para facilitar a geração de documentação usando a lib gomarkdoc
+  - sempre que criar um novo service, deve atualizar a lista de services no arquivo README.md na raiz do repositório
+  - todos os serviços devem utilizar logs estruturados em json, para facilitar throubleshooting em ferramentas de observabilidade quando necessário
+
+antes de realizar qualquer desenvolvimento, crie um plano, apresente e aguarde aprovação.
+se tiver qualquer dúvida ou questionamento sobre ambiguidades ou especificações do serviço solicitado, questione.
+podemos começar?

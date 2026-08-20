@@ -1,170 +1,106 @@
-# sts-token-management
+# go-core-sdk
 
-Biblioteca Go para gestão de tokens STS (Security Token Service), construída
-com Clean Architecture. Ela mantém um token de acesso sempre válido em
-segundo plano e oferece uma função facilitadora (`RestAuthCaller`) para
-chamar APIs externas com o bearer token injetado automaticamente, com
-suporte a retries, delay entre tentativas e timeout por requisição.
+`go-core-sdk` reune services Go autocontidos para uso em aplicacoes e bibliotecas.
 
-## 1. Arquitetura
+## Services
 
-```
-app/
-  domain/         # Entidades puras e interfaces de repositório (portas). Zero dependências externas.
-    entity/         TokenManagement, APIRequest, APIResponse, HTTPMethod
-    repository/     TokenProvider, TokenManager, RestAuthCaller (interfaces)
-    errors/         Erros de domínio tipados (pacote "errs")
-  application/    # Casos de uso e orquestração. Depende só de domain.
-    dto/            DTOs de entrada/saída dos casos de uso
-    service/        TokenManagerService — renovação em background (goroutine + ticker)
-    usecase/        GetCurrentTokenUseCase, CallAPIUseCase (+ testes com mocks)
-  infrastructure/ # Implementações concretas dos ports do domínio.
-    sts/            HTTPTokenProvider — busca token real num endpoint STS
-    httpclient/     RestAuthCallerImpl — chamadas HTTP com bearer, retries e timeout
-  presentation/   # Controllers HTTP da aplicação de teste (demo).
-    http/           TokenHandler, ProxyHandler, middleware de logging, mock de STS
-  main/           # Composition root: configuração e injeção de dependências.
-    config/         Carrega configuração do ambiente
-    factory/        Monta o grafo de dependências (Build)
-cmd/
-  main.go         # Aplicação de teste executável (ver seção 3)
-```
+| Service | Package | Descricao |
+| --- | --- | --- |
+| Token | `github.com/raywall/go-core-sdk/services/token` | Gerencia tokens STS com client credentials, renovacao automatica, refresh manual e logs estruturados em JSON. |
+| Validation | `github.com/raywall/go-core-sdk/services/validation` | Valida structs e substructs com validator/v10, retornando todos os campos invalidos em um erro tipado. |
 
-Regra de dependência (Clean Architecture): as camadas internas nunca
-importam as externas. `domain` não conhece `application`; `application` não
-conhece `infrastructure`/`presentation`; toda a montagem acontece apenas em
-`app/main/factory` e `cmd/main.go`.
+## Token
 
-### Entidades core
-
-- **`TokenManagement`** (`app/domain/entity/token.go`): representa o token
-  STS e sua validade (`IsExpired`, `IsNearExpiration`, `BearerHeader`).
-- **`RestAuthCaller`** (`app/domain/repository/rest_auth_caller.go` +
-  `app/domain/entity/rest_auth_caller.go`): porta/contrato para chamadas de
-  API autenticadas, com `APIRequest`/`APIResponse` como objetos de valor.
-
-## 2. Regras de negócio implementadas
-
-- O gerenciador de token (`TokenManagerService`) roda em uma única goroutine
-  de segundo plano, iniciada por `Start(ctx)` e encerrada de forma
-  determinística por `Stop()` ou pelo cancelamento do `context.Context` —
-  sem impactar a aplicação hospedeira e sem vazar goroutines.
-- O token é mantido sempre atualizado: a cada tick, o gerenciador verifica
-  se o token está próximo de expirar (`IsNearExpiration`, configurável via
-  `STS_REFRESH_THRESHOLD`) e, se estiver, busca um novo antes que o atual
-  expire, substituindo-o de forma thread-safe (`sync.RWMutex`).
-- `RestAuthCallerImpl.Call` injeta automaticamente o header
-  `Authorization: Bearer <token>` em toda chamada, de forma transparente ao
-  chamador.
-- `CallAPIUseCase`/`APIRequest` permitem customizar `method`, `url`,
-  `headers` e `body` livremente, para qualquer verbo HTTP suportado (GET,
-  POST, PUT, PATCH, DELETE).
-- É possível definir `retries` (número de retentativas após a primeira
-  tentativa) e `retryDelayMs` (intervalo entre tentativas). Respostas 5xx ou
-  falhas de transporte disparam retry; respostas 4xx não são retentadas
-  (erro do cliente, retry não ajudaria).
-- É possível definir `timeoutMs`, aplicado por tentativa via
-  `context.WithTimeout`, interrompendo a chamada ao atingir o limite.
-
-## 3. Rodando o projeto localmente
-
-Pré-requisitos: Go 1.25+.
-
-```bash
-make test-race   # roda a suíte de testes com detector de race
-make run         # sobe a aplicação de teste em :8080
-```
-
-`make run` inicia uma aplicação **totalmente self-contained** — sem
-dependência de rede externa:
-
-1. Um mock de STS local (`/mock/sts/token`) simula o provedor externo,
-   emitindo tokens de curta duração (20s) para tornar a renovação visível
-   nos logs.
-2. O `factory.Build` conecta o `TokenManager` real a esse mock e inicia a
-   renovação em background.
-3. Um servidor HTTP de demonstração expõe:
-
-   | Rota           | Método | Descrição                                                                 |
-   |----------------|--------|----------------------------------------------------------------------------|
-   | `/health`      | GET    | Readiness probe                                                            |
-   | `/token`       | GET    | Token atualmente em cache no gerenciador                                  |
-   | `/echo`        | POST   | Ecoa método/headers/body recebidos (simula uma API downstream)            |
-   | `/call`        | POST   | Executa `CallAPIUseCase` contra a URL informada, com bearer/retries/timeout|
-
-Exemplo de chamada usando `/call` para atingir o próprio `/echo` e comprovar
-que o bearer token foi injetado automaticamente:
-
-```bash
-curl -s -X POST http://localhost:8080/call -d '{
-  "method": "POST",
-  "url": "http://localhost:8080/echo",
-  "headers": {"X-Custom": "hello"},
-  "body": "{\"ping\":true}",
-  "retries": 2,
-  "retryDelayMs": 100,
-  "timeoutMs": 3000
-}'
-```
-
-Para apontar para um STS real em vez do mock, defina as variáveis de
-ambiente abaixo antes de `make run`.
-
-### Variáveis de ambiente
-
-| Variável                 | Padrão (demo)                          | Descrição                                   |
-|---------------------------|-----------------------------------------|----------------------------------------------|
-| `SERVER_ADDR`              | `:8080`                                 | Endereço do servidor de demonstração         |
-| `STS_TOKEN_URL`             | mock local (`/mock/sts/token`)          | Endpoint STS (client-credentials)            |
-| `STS_CLIENT_ID`             | `demo-client`                           | Client ID usado na busca do token            |
-| `STS_CLIENT_SECRET`         | `demo-secret`                           | Client secret usado na busca do token        |
-| `STS_SCOPE`                 | *(vazio)*                               | Scope opcional                               |
-| `STS_REFRESH_THRESHOLD`     | `8` (segundos)                          | Renovar o token quando faltar esse tempo     |
-| `STS_POLL_INTERVAL`         | `2` (segundos)                          | Intervalo de checagem do gerenciador         |
-
-## 4. Usando como biblioteca em outra aplicação
-
-O caso de uso típico é importar `app/main/factory` (ou reproduzir sua
-montagem) dentro do seu próprio serviço:
+O service `token` inicializa um gerenciador de token STS no inicio da aplicacao, mantem o token renovado durante o ciclo de vida do processo e permite encerrar a rotina de renovacao no shutdown.
 
 ```go
-cfg := config.Config{
-    STSTokenURL:      "https://sts.minha-empresa.com/oauth/token",
-    STSClientID:       os.Getenv("STS_CLIENT_ID"),
-    STSClientSecret:   os.Getenv("STS_CLIENT_SECRET"),
-    RefreshThreshold:  60 * time.Second,
-    PollInterval:      15 * time.Second,
-}
+package main
 
-app, err := factory.Build(ctx, cfg, logger)
-if err != nil {
-    log.Fatal(err)
-}
-defer app.TokenManager.Stop()
+import (
+	"context"
+	"log"
+	"time"
 
-out, err := app.CallAPIUseCase.Execute(ctx, dto.CallAPIInput{
-    Method:       "GET",
-    URL:          "https://api.parceiro.com/recurso",
-    Retries:      3,
-    RetryDelayMs: 200,
-    TimeoutMs:    5000,
-})
+	"github.com/raywall/go-core-sdk/services/token"
+)
+
+func main() {
+	manager, err := token.NewManager(token.Config{
+		BaseURL:        "https://sts.example.com",
+		Endpoint:       "/oauth/token",
+		ClientID:       "uuid",
+		ClientSecret:   "uuid",
+		Headers:        map[string]string{"X-App": "orders-api"},
+		ValidateSSL:    true,
+		RefreshBefore:  30 * time.Second,
+		RequestTimeout: 10 * time.Second,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+	if err := manager.Start(ctx); err != nil {
+		log.Fatal(err)
+	}
+	defer manager.Stop()
+
+	authorization := manager.Token().ToString()
+	_ = authorization
+}
 ```
 
-`app.TokenManager` continua rodando em segundo plano por toda a vida do
-processo hospedeiro; chame `Stop()` durante o shutdown gracioso da
-aplicação.
+O token retornado por `Manager.Token()` e um ponteiro estavel. O gerenciador atualiza o mesmo objeto internamente, permitindo que componentes que mantenham a referencia observem os novos valores por meio dos metodos de leitura de `types.Token`.
 
-## 5. Testes
+## Validation
 
-Casos de uso em `app/application/usecase` têm testes unitários com mocks
-das interfaces de domínio (`repository.RestAuthCaller`, `repository.TokenManager`).
-O serviço de renovação em background (`app/application/service`) também tem
-testes cobrindo início, renovação automática, encerramento sem vazamento de
-goroutine e falha na busca inicial.
+O service `validation` simplifica a validacao de structs, substructs e colecoes de substructs usando `github.com/go-playground/validator/v10`. Quando existem falhas, o erro retornado carrega todos os campos que precisam ser ajustados.
 
-```bash
-make test        # go test ./...
-make test-race   # go test -race ./...  (recomendado)
+```go
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log"
+
+	"github.com/raywall/go-core-sdk/services/validation"
+	validationtypes "github.com/raywall/go-core-sdk/services/validation/types"
+)
+
+type Order struct {
+	Customer Customer `json:"customer"`
+	Items    []Item   `json:"items" validate:"required,min=1"`
+}
+
+type Customer struct {
+	Document string `json:"document" validate:"required,len=11"`
+}
+
+type Item struct {
+	SKU      string `json:"sku" validate:"required"`
+	Quantity int    `json:"quantity" validate:"min=1"`
+}
+
+func main() {
+	validator, err := validation.New()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	order := Order{
+		Customer: Customer{Document: "123"},
+		Items:    []Item{{SKU: "", Quantity: 0}},
+	}
+
+	if err := validator.Validate(context.Background(), order); err != nil {
+		var validationErr *validationtypes.ValidationError
+		if errors.As(err, &validationErr) {
+			for _, field := range validationErr.Fields {
+				fmt.Printf("%s: %s\n", field.Namespace, field.Message)
+			}
+		}
+	}
+}
 ```
-# sts-token-management
