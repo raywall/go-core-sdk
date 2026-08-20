@@ -6,9 +6,58 @@
 
 | Service | Package | Descricao |
 | --- | --- | --- |
+| Decision | `github.com/raywall/go-core-sdk/services/decision` | Avalia regras de decisao em CEL expression contra multiplas entidades com cache de compilacao. |
 | Selector | `github.com/raywall/go-core-sdk/services/selector` | Ordena itens financeiros por atributo e seleciona pagamentos integrais ou parciais com valores em unidade minima. |
 | Token | `github.com/raywall/go-core-sdk/services/token` | Gerencia tokens STS com client credentials, renovacao automatica, refresh manual e logs estruturados em JSON. |
 | Validation | `github.com/raywall/go-core-sdk/services/validation` | Valida structs e substructs com validator/v10, retornando todos os campos invalidos em um erro tipado. |
+
+## Decision
+
+O service `decision` avalia regras em CEL expression contra varias entidades nomeadas. As entidades podem ser structs ou maps; campos de structs usam a tag `json` quando existir.
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/raywall/go-core-sdk/services/decision"
+	decisiontypes "github.com/raywall/go-core-sdk/services/decision/types"
+)
+
+type Worker struct {
+	Active          bool  `json:"active"`
+	AvailableMargin int64 `json:"availableMargin"`
+}
+
+type Proposal struct {
+	Amount int64 `json:"amount"`
+}
+
+func main() {
+	engine, err := decision.New()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	result, err := engine.Evaluate(context.Background(), decisiontypes.EvaluationInput{
+		Rule: decisiontypes.Rule{
+			Name:       "margin-approved",
+			Expression: "worker.active && proposal.amount <= worker.availableMargin",
+		},
+		Entities: map[string]any{
+			"worker":   Worker{Active: true, AvailableMargin: 100000},
+			"proposal": Proposal{Amount: 75000},
+		},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_ = result.Allowed
+}
+```
 
 ## Selector
 
