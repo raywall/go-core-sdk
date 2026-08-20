@@ -120,36 +120,38 @@ func (fakeSQSClient) DeleteMessage(context.Context, *sqs.DeleteMessageInput, ...
 	return &sqs.DeleteMessageOutput{}, nil
 }
 
-type stdoutMetricsClient struct{}
-
-func (stdoutMetricsClient) Count(name string, value int64, tags []string, rate float64) error {
-	fmt.Printf("metric=count name=%s value=%d tags=%v rate=%.1f\n", name, value, tags, rate)
-	return nil
+type stdoutMetricsClient struct {
+	out io.Writer
 }
 
-func (stdoutMetricsClient) Incr(name string, tags []string, rate float64) error {
-	fmt.Printf("metric=increment name=%s tags=%v rate=%.1f\n", name, tags, rate)
-	return nil
+func (c stdoutMetricsClient) Count(name string, value int64, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=count name=%s value=%d tags=%v rate=%.1f\n", name, value, tags, rate)
+	return err
 }
 
-func (stdoutMetricsClient) Gauge(name string, value float64, tags []string, rate float64) error {
-	fmt.Printf("metric=gauge name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
-	return nil
+func (c stdoutMetricsClient) Incr(name string, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=increment name=%s tags=%v rate=%.1f\n", name, tags, rate)
+	return err
 }
 
-func (stdoutMetricsClient) Histogram(name string, value float64, tags []string, rate float64) error {
-	fmt.Printf("metric=histogram name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
-	return nil
+func (c stdoutMetricsClient) Gauge(name string, value float64, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=gauge name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
+	return err
 }
 
-func (stdoutMetricsClient) Distribution(name string, value float64, tags []string, rate float64) error {
-	fmt.Printf("metric=distribution name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
-	return nil
+func (c stdoutMetricsClient) Histogram(name string, value float64, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=histogram name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
+	return err
 }
 
-func (stdoutMetricsClient) Timing(name string, value time.Duration, tags []string, rate float64) error {
-	fmt.Printf("metric=timing name=%s value=%s tags=%v rate=%.1f\n", name, value, tags, rate)
-	return nil
+func (c stdoutMetricsClient) Distribution(name string, value float64, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=distribution name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
+	return err
+}
+
+func (c stdoutMetricsClient) Timing(name string, value time.Duration, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=timing name=%s value=%s tags=%v rate=%.1f\n", name, value, tags, rate)
+	return err
 }
 
 func newSTS() *httptest.Server {

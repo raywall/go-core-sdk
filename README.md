@@ -74,10 +74,13 @@ Esse uso e opcional. Cada service continua podendo ser importado e configurado d
 
 ## Samples
 
-Os exemplos em `samples/` sao executaveis com `go run`. O sample composto em `samples/microservice` demonstra um fluxo local de microservico que combina `config`, `core`, Secrets Manager, token management, S3, REST, validation, selector, decision, SQS, logs estruturados e metricas customizadas.
+Os exemplos em `samples/` sao executaveis com `go run` e tambem possuem testes. Cada sample deixa o `main` como composition root e move o comportamento para um `run` ou use case com dependencias injetadas, facilitando o uso em contextos de clean architecture, ports and adapters e testes unitarios.
+
+O sample composto em `samples/microservice` demonstra um fluxo local de microservico que combina `config`, `core`, Secrets Manager, token management, S3, REST, validation, parser, selector, decision, SQS, logs estruturados e metricas customizadas.
 
 ```sh
 go run ./samples/microservice
+go test ./samples/...
 ```
 
 ## Observability

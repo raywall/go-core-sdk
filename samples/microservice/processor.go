@@ -17,21 +17,37 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/raywall/go-core-sdk/core"
+	"github.com/raywall/go-core-sdk/services/consumer"
 	consumertypes "github.com/raywall/go-core-sdk/services/consumer/types"
+	"github.com/raywall/go-core-sdk/services/decision"
 	decisiontypes "github.com/raywall/go-core-sdk/services/decision/types"
+	"github.com/raywall/go-core-sdk/services/observability"
 	"github.com/raywall/go-core-sdk/services/parser"
+	"github.com/raywall/go-core-sdk/services/selector"
 	selectortypes "github.com/raywall/go-core-sdk/services/selector/types"
+	"github.com/raywall/go-core-sdk/services/token"
+	"github.com/raywall/go-core-sdk/services/validation"
 )
 
 const dateLayout = "2006-01-02"
 
+type paymentRuntime interface {
+	Logger() *slog.Logger
+	Observability() *observability.Observability
+	Consumer() *consumer.Consumer
+	Decision() *decision.Decision
+	Selector() *selector.Selector
+	Validator() *validation.Validator
+	TokenManager(name string) (*token.Manager, bool)
+}
+
 type paymentProcessor struct {
-	runtime        *core.Core
+	runtime        paymentRuntime
 	financingAPI   string
 	paymentQueue   string
 	tokenManagerID string

@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -24,17 +25,7 @@ import (
 
 func main() {
 	ctx := context.Background()
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer sample-token" {
-			http.Error(w, "missing authorization", http.StatusUnauthorized)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id":     "ORDER#1",
-			"status": "CREATED",
-		})
-	}))
+	api := newOrdersAPI()
 	defer api.Close()
 
 	client, err := consumer.New(consumer.Config{},
@@ -48,25 +39,47 @@ func main() {
 		log.Fatal(err)
 	}
 
-	restResponse, err := client.REST(http.MethodPost, api.URL).
+	if err := run(ctx, OrdersUseCase{
+		Client: client,
+		APIURL: api.URL,
+		Output: os.Stdout,
+	}); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// OrdersUseCase demonstrates outbound REST and AWS-like consumer adapters.
+type OrdersUseCase struct {
+	Client *consumer.Consumer
+	APIURL string
+	Output io.Writer
+}
+
+func run(ctx context.Context, useCase OrdersUseCase) error {
+	return useCase.Execute(ctx)
+}
+
+func (u OrdersUseCase) Execute(ctx context.Context) error {
+	client := u.Client
+	restResponse, err := client.REST(http.MethodPost, u.APIURL).
 		WithHeader("X-App", "orders-api").
 		WithBody(map[string]any{"customerId": "CUSTOMER#1"}).
 		WithToken().
 		Do(ctx)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	var order map[string]string
 	if err := restResponse.DecodeJSON(&order); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	if err := client.PutDynamoDB(ctx, consumertypes.DynamoDBPutInput{
 		TableName: "orders",
 		Item:      order,
 	}); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	var stored orderRecord
@@ -76,7 +89,7 @@ func main() {
 		Target:    &stored,
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	s3Output, err := client.PutS3(ctx, consumertypes.S3PutInput{
@@ -86,7 +99,7 @@ func main() {
 		ContentType: "application/json",
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	sqsOutput, err := client.SendSQS(ctx, consumertypes.SQSSendInput{
@@ -97,7 +110,7 @@ func main() {
 		},
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	receiveOutput, err := client.ReceiveSQS(ctx, consumertypes.SQSReceiveInput{
@@ -107,15 +120,15 @@ func main() {
 		MessageAttributeNames: []string{"All"},
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	var database databaseSecret
 	if _, err := client.GetSecretJSON(ctx, consumertypes.SecretGetInput{SecretID: "orders/database"}, &database); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	fmt.Printf("restStatus=%d order=%s found=%t storedStatus=%s s3ETag=%s sqsMessage=%s received=%d\n",
+	if _, err := fmt.Fprintf(u.Output, "restStatus=%d order=%s found=%t storedStatus=%s s3ETag=%s sqsMessage=%s received=%d\n",
 		restResponse.StatusCode,
 		order["id"],
 		getOutput.Found,
@@ -123,8 +136,25 @@ func main() {
 		s3Output.ETag,
 		sqsOutput.MessageID,
 		len(receiveOutput.Messages),
-	)
-	fmt.Printf("secretUsername=%s\n", database.Username)
+	); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(u.Output, "secretUsername=%s\n", database.Username)
+	return err
+}
+
+func newOrdersAPI() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer sample-token" {
+			http.Error(w, "missing authorization", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":     "ORDER#1",
+			"status": "CREATED",
+		})
+	}))
 }
 
 type staticTokenProvider struct{}

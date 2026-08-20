@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -59,25 +61,44 @@ func main() {
 
 	runtime, err := core.New(ctx, cfg,
 		core.WithConsumerOptions(consumer.WithSecretsManagerClient(fakeSecretsManagerClient{})),
-		core.WithObservabilityOptions(observability.WithMetricsClient(stdoutMetricsClient{})),
+		core.WithObservabilityOptions(observability.WithMetricsClient(stdoutMetricsClient{out: os.Stdout})),
 		core.WithTokenAutoStart(true),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	if err := run(ctx, CoreUseCase{Runtime: runtime, Output: os.Stdout}); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// CoreUseCase demonstrates how application code consumes the composed runtime.
+type CoreUseCase struct {
+	Runtime *core.Core
+	Output  io.Writer
+}
+
+func run(ctx context.Context, useCase CoreUseCase) error {
+	return useCase.Execute(ctx)
+}
+
+func (u CoreUseCase) Execute(ctx context.Context) error {
+	runtime := u.Runtime
 	defer runtime.Stop()
 
 	manager, _ := runtime.TokenManager("partner-api")
 	if err := runtime.Observability().Increment(ctx, "core.started", "sample:true"); err != nil {
-		log.Fatal(err)
+		return err
 	}
-	fmt.Printf("service=%s env=%s token=%q validatorReady=%t decisionReady=%t\n",
+	_, err := fmt.Fprintf(u.Output, "service=%s env=%s token=%q validatorReady=%t decisionReady=%t\n",
 		runtime.Config().ServiceName(),
 		runtime.Config().Environment(),
 		manager.Token().ToString(),
 		runtime.Validator() != nil,
 		runtime.Decision() != nil,
 	)
+	return err
 }
 
 type fakeSecretsManagerClient struct{}
@@ -98,34 +119,36 @@ func (fakeSecretsManagerClient) UpdateSecret(context.Context, *secretsmanager.Up
 	return &secretsmanager.UpdateSecretOutput{}, nil
 }
 
-type stdoutMetricsClient struct{}
-
-func (stdoutMetricsClient) Count(name string, value int64, tags []string, rate float64) error {
-	fmt.Printf("metric=count name=%s value=%d tags=%v rate=%.1f\n", name, value, tags, rate)
-	return nil
+type stdoutMetricsClient struct {
+	out io.Writer
 }
 
-func (stdoutMetricsClient) Incr(name string, tags []string, rate float64) error {
-	fmt.Printf("metric=increment name=%s tags=%v rate=%.1f\n", name, tags, rate)
-	return nil
+func (c stdoutMetricsClient) Count(name string, value int64, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=count name=%s value=%d tags=%v rate=%.1f\n", name, value, tags, rate)
+	return err
 }
 
-func (stdoutMetricsClient) Gauge(name string, value float64, tags []string, rate float64) error {
-	fmt.Printf("metric=gauge name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
-	return nil
+func (c stdoutMetricsClient) Incr(name string, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=increment name=%s tags=%v rate=%.1f\n", name, tags, rate)
+	return err
 }
 
-func (stdoutMetricsClient) Histogram(name string, value float64, tags []string, rate float64) error {
-	fmt.Printf("metric=histogram name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
-	return nil
+func (c stdoutMetricsClient) Gauge(name string, value float64, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=gauge name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
+	return err
 }
 
-func (stdoutMetricsClient) Distribution(name string, value float64, tags []string, rate float64) error {
-	fmt.Printf("metric=distribution name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
-	return nil
+func (c stdoutMetricsClient) Histogram(name string, value float64, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=histogram name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
+	return err
 }
 
-func (stdoutMetricsClient) Timing(name string, value time.Duration, tags []string, rate float64) error {
-	fmt.Printf("metric=timing name=%s value=%s tags=%v rate=%.1f\n", name, value, tags, rate)
-	return nil
+func (c stdoutMetricsClient) Distribution(name string, value float64, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=distribution name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
+	return err
+}
+
+func (c stdoutMetricsClient) Timing(name string, value time.Duration, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=timing name=%s value=%s tags=%v rate=%.1f\n", name, value, tags, rate)
+	return err
 }

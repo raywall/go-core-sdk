@@ -15,7 +15,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"log"
+	"os"
 	"time"
 
 	"github.com/raywall/go-core-sdk/config"
@@ -33,8 +36,12 @@ const (
 )
 
 func main() {
-	ctx := context.Background()
+	if _, err := run(context.Background(), os.Stdout); err != nil {
+		log.Fatal(err)
+	}
+}
 
+func run(ctx context.Context, out io.Writer) (paymentEvent, error) {
 	sts := newSTS()
 	defer sts.Close()
 
@@ -43,11 +50,11 @@ func main() {
 
 	env, err := environment.New(environment.WithLookupFunc(sampleEnvironment()))
 	if err != nil {
-		log.Fatal(err)
+		return paymentEvent{}, err
 	}
 	settings, err := loadRuntimeSettings(ctx, env)
 	if err != nil {
-		log.Fatal(err)
+		return paymentEvent{}, err
 	}
 
 	s3Client := newFakeS3Client(settings.SourceBucket, settings.SourceObjectKey, sampleInstructionJSON())
@@ -74,7 +81,7 @@ func main() {
 		}),
 	)
 	if err != nil {
-		log.Fatal(err)
+		return paymentEvent{}, err
 	}
 
 	runtime, err := core.New(ctx, cfg,
@@ -86,11 +93,14 @@ func main() {
 			consumer.WithS3Client(s3Client),
 			consumer.WithSQSClient(sqsClient),
 		),
-		core.WithObservabilityOptions(observability.WithMetricsClient(stdoutMetricsClient{})),
+		core.WithObservabilityOptions(
+			observability.WithMetricsClient(stdoutMetricsClient{out: out}),
+			observability.WithWriter(out),
+		),
 		core.WithTokenAutoStart(true),
 	)
 	if err != nil {
-		log.Fatal(err)
+		return paymentEvent{}, err
 	}
 	defer runtime.Stop()
 
@@ -102,12 +112,19 @@ func main() {
 	}
 
 	if err := processor.processS3Notification(ctx, sampleS3Notification(settings)); err != nil {
-		log.Fatal(err)
+		return paymentEvent{}, err
 	}
 
-	if len(sqsClient.messages) > 0 {
-		runtime.Logger().InfoContext(ctx, "sample_sqs_payment_event_body", "body", sqsClient.messages[0].body)
+	if len(sqsClient.messages) == 0 {
+		return paymentEvent{}, nil
 	}
+
+	var event paymentEvent
+	if err := json.Unmarshal([]byte(sqsClient.messages[0].body), &event); err != nil {
+		return paymentEvent{}, err
+	}
+	runtime.Logger().InfoContext(ctx, "sample_sqs_payment_event_body", "body", sqsClient.messages[0].body)
+	return event, nil
 }
 
 type runtimeSettings struct {

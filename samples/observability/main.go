@@ -16,6 +16,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -23,64 +24,79 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
+	if err := run(context.Background(), os.Stdout); err != nil {
+		panic(err)
+	}
+}
+
+// ObservabilityUseCase emits structured logs and custom metrics.
+type ObservabilityUseCase struct {
+	Output io.Writer
+}
+
+func run(ctx context.Context, out io.Writer) error {
+	return ObservabilityUseCase{Output: out}.Execute(ctx)
+}
+
+func (u ObservabilityUseCase) Execute(ctx context.Context) error {
 	telemetry, err := observability.New(observability.Config{
 		ServiceName:  "orders-worker",
 		Environment:  "dev",
 		Version:      "1.0.0",
 		MetricPrefix: "orders",
 		DefaultTags:  []string{"team:platform", "component:sample"},
-	}, observability.WithMetricsClient(stdoutMetricsClient{}), observability.WithWriter(os.Stdout))
+	}, observability.WithMetricsClient(writerMetricsClient{out: u.Output}), observability.WithWriter(u.Output))
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer func() {
-		if err := telemetry.Close(); err != nil {
-			panic(err)
-		}
+		_ = telemetry.Close()
 	}()
 
 	telemetry.Logger().InfoContext(ctx, "order_processing_started", "order_id", "order-123")
 	if err := telemetry.Increment(ctx, "events.received", "source:s3"); err != nil {
-		panic(err)
+		return err
 	}
 	if err := telemetry.Gauge(ctx, "queue.depth", 42, "queue:orders"); err != nil {
-		panic(err)
+		return err
 	}
 	if err := telemetry.Timing(ctx, "api.latency", 125*time.Millisecond, "partner:billing"); err != nil {
-		panic(err)
+		return err
 	}
 	telemetry.Logger().InfoContext(ctx, "order_processing_finished", "order_id", "order-123")
-}
-
-type stdoutMetricsClient struct{}
-
-func (stdoutMetricsClient) Count(name string, value int64, tags []string, rate float64) error {
-	fmt.Printf("metric=count name=%s value=%d tags=%v rate=%.1f\n", name, value, tags, rate)
 	return nil
 }
 
-func (stdoutMetricsClient) Incr(name string, tags []string, rate float64) error {
-	fmt.Printf("metric=increment name=%s tags=%v rate=%.1f\n", name, tags, rate)
-	return nil
+type writerMetricsClient struct {
+	out io.Writer
 }
 
-func (stdoutMetricsClient) Gauge(name string, value float64, tags []string, rate float64) error {
-	fmt.Printf("metric=gauge name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
-	return nil
+func (c writerMetricsClient) Count(name string, value int64, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=count name=%s value=%d tags=%v rate=%.1f\n", name, value, tags, rate)
+	return err
 }
 
-func (stdoutMetricsClient) Histogram(name string, value float64, tags []string, rate float64) error {
-	fmt.Printf("metric=histogram name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
-	return nil
+func (c writerMetricsClient) Incr(name string, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=increment name=%s tags=%v rate=%.1f\n", name, tags, rate)
+	return err
 }
 
-func (stdoutMetricsClient) Distribution(name string, value float64, tags []string, rate float64) error {
-	fmt.Printf("metric=distribution name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
-	return nil
+func (c writerMetricsClient) Gauge(name string, value float64, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=gauge name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
+	return err
 }
 
-func (stdoutMetricsClient) Timing(name string, value time.Duration, tags []string, rate float64) error {
-	fmt.Printf("metric=timing name=%s value=%s tags=%v rate=%.1f\n", name, value, tags, rate)
-	return nil
+func (c writerMetricsClient) Histogram(name string, value float64, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=histogram name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
+	return err
+}
+
+func (c writerMetricsClient) Distribution(name string, value float64, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=distribution name=%s value=%.2f tags=%v rate=%.1f\n", name, value, tags, rate)
+	return err
+}
+
+func (c writerMetricsClient) Timing(name string, value time.Duration, tags []string, rate float64) error {
+	_, err := fmt.Fprintf(c.out, "metric=timing name=%s value=%s tags=%v rate=%.1f\n", name, value, tags, rate)
+	return err
 }

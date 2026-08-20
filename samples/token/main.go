@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"time"
 
 	"github.com/raywall/go-core-sdk/services/token"
@@ -48,15 +50,32 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ctx := context.Background()
-	if err := manager.Start(ctx); err != nil {
+	if err := run(context.Background(), os.Stdout, manager); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// TokenUseCase starts a token manager and prints the current authorization value.
+type TokenUseCase struct {
+	Manager *token.Manager
+	Output  io.Writer
+}
+
+func run(ctx context.Context, out io.Writer, manager *token.Manager) error {
+	return TokenUseCase{Manager: manager, Output: out}.Execute(ctx)
+}
+
+func (u TokenUseCase) Execute(ctx context.Context) error {
+	manager := u.Manager
+	if err := manager.Start(ctx); err != nil {
+		return err
 	}
 	defer manager.Stop()
 
-	fmt.Printf("status=%s authorization=%q refreshIn=%s\n",
+	_, err := fmt.Fprintf(u.Output, "status=%s authorization=%q refreshIn=%s\n",
 		manager.Status(),
 		manager.Token().ToString(),
 		manager.TimeUntilRefresh().Round(time.Second),
 	)
+	return err
 }

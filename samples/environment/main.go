@@ -16,33 +16,52 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
+	"os"
 
 	"github.com/raywall/go-core-sdk/services/environment"
 )
 
 func main() {
-	ctx := context.Background()
 	values := map[string]string{
 		"APP_SERVICE_NAME": "orders-worker",
 	}
-
-	env, err := environment.New(environment.WithLookupFunc(func(name string) (string, bool) {
+	if err := run(context.Background(), os.Stdout, func(name string) (string, bool) {
 		value, ok := values[name]
 		return value, ok
+	}); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// EnvironmentUseCase loads required and optional runtime settings.
+type EnvironmentUseCase struct {
+	Lookup environment.LookupFunc
+	Output io.Writer
+}
+
+func run(ctx context.Context, out io.Writer, lookup environment.LookupFunc) error {
+	return EnvironmentUseCase{Lookup: lookup, Output: out}.Execute(ctx)
+}
+
+func (u EnvironmentUseCase) Execute(ctx context.Context) error {
+	env, err := environment.New(environment.WithLookupFunc(func(name string) (string, bool) {
+		return u.Lookup(name)
 	}))
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	serviceName, err := env.Get(ctx, "APP_SERVICE_NAME")
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	environmentName, err := env.GetDefault(ctx, "APP_ENVIRONMENT", "local")
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	fmt.Printf("service=%s environment=%s\n", serviceName, environmentName)
+	_, err = fmt.Fprintf(u.Output, "service=%s environment=%s\n", serviceName, environmentName)
+	return err
 }

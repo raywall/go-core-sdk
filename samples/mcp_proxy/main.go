@@ -17,9 +17,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 
 	"github.com/raywall/go-core-sdk/services/mcp/proxy"
 	proxytypes "github.com/raywall/go-core-sdk/services/mcp/proxy/types"
@@ -56,11 +58,30 @@ func main() {
 		log.Fatal(err)
 	}
 
-	tools, err := mcpProxy.Tools(ctx)
-	if err != nil {
+	if err := run(ctx, os.Stdout, mcpProxy); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("tools=%d first=%s\n", len(tools), tools[0].Name)
+}
+
+// ProxyUseCase lists and invokes MCP proxy tools.
+type ProxyUseCase struct {
+	Proxy  *proxy.Proxy
+	Output io.Writer
+}
+
+func run(ctx context.Context, out io.Writer, mcpProxy *proxy.Proxy) error {
+	return ProxyUseCase{Proxy: mcpProxy, Output: out}.Execute(ctx)
+}
+
+func (u ProxyUseCase) Execute(ctx context.Context) error {
+	mcpProxy := u.Proxy
+	tools, err := mcpProxy.Tools(ctx)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(u.Output, "tools=%d first=%s\n", len(tools), tools[0].Name); err != nil {
+		return err
+	}
 
 	output, err := mcpProxy.Invoke(ctx, proxytypes.InvokeInput{
 		ToolName: "simulate_student_financing_payment",
@@ -73,10 +94,11 @@ func main() {
 		},
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	fmt.Printf("status=%d body=%s\n", output.StatusCode, string(output.Body))
+	_, err = fmt.Fprintf(u.Output, "status=%d body=%s\n", output.StatusCode, string(output.Body))
+	return err
 }
 
 func newPaymentBackend() *httptest.Server {

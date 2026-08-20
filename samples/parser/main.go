@@ -15,26 +15,42 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
+	"os"
 
 	"github.com/raywall/go-core-sdk/services/parser"
 )
 
 func main() {
-	ctx := context.Background()
 	dto := ProposalDTO{
 		ID:             "proposal-123",
 		Customer:       CustomerDTO{Document: "12345678901", Name: "Ana"},
 		RequestedCents: 75000,
 		Channel:        "mobile",
 	}
-
-	entity, err := parser.ParseAs[Proposal](ctx, dto)
-	if err != nil {
+	if err := run(context.Background(), os.Stdout, dto); err != nil {
 		log.Fatal(err)
 	}
+}
 
-	fmt.Printf("proposal=%s customer=%s amount=%d\n", entity.ID, entity.Customer.Document, entity.AmountCents)
+// ProposalParserUseCase converts an inbound DTO into a domain entity.
+type ProposalParserUseCase struct {
+	Output io.Writer
+}
+
+func run(ctx context.Context, out io.Writer, dto ProposalDTO) error {
+	return ProposalParserUseCase{Output: out}.Execute(ctx, dto)
+}
+
+func (u ProposalParserUseCase) Execute(ctx context.Context, dto ProposalDTO) error {
+	entity, err := parser.ParseAs[Proposal](ctx, dto)
+	if err != nil {
+		return err
+	}
+
+	_, err = fmt.Fprintf(u.Output, "proposal=%s customer=%s amount=%d\n", entity.ID, entity.Customer.Document, entity.AmountCents)
+	return err
 }
 
 // ProposalDTO is an inbound API payload with transport-oriented names.
