@@ -19,8 +19,8 @@ import (
 	"strings"
 
 	"github.com/raywall/go-core-sdk/config"
-	"github.com/raywall/go-core-sdk/services/consumer"
-	consumertypes "github.com/raywall/go-core-sdk/services/consumer/types"
+	consumeraws "github.com/raywall/go-core-sdk/services/consumer/aws"
+	consumerrest "github.com/raywall/go-core-sdk/services/consumer/rest"
 	"github.com/raywall/go-core-sdk/services/decision"
 	"github.com/raywall/go-core-sdk/services/observability"
 	"github.com/raywall/go-core-sdk/services/selector"
@@ -36,7 +36,8 @@ type Core struct {
 	config    *config.Config
 	logger    *slog.Logger
 	telemetry *observability.Observability
-	consumer  *consumer.Consumer
+	aws       *consumeraws.Client
+	rest      *consumerrest.Client
 	decision  *decision.Decision
 	selector  *selector.Selector
 	validator *validation.Validator
@@ -68,13 +69,21 @@ func New(ctx context.Context, cfg *config.Config, configurers ...Option) (*Core,
 		return nil, err
 	}
 	logger := telemetry.Logger()
-	consumerOptions := []consumer.Option{consumer.WithLogger(logger)}
-	if awsConfig, ok := cfg.AWS(); ok {
-		consumerOptions = append(consumerOptions, consumer.WithAWSConfig(awsConfig))
-	}
-	consumerOptions = append(consumerOptions, options.consumerOptions...)
 
-	consumerService, err := consumer.New(cfg.Consumer(), consumerOptions...)
+	restOptions := []consumerrest.Option{consumerrest.WithLogger(logger)}
+	restOptions = append(restOptions, options.restOptions...)
+	restService, err := consumerrest.New(cfg.ConsumerREST(), restOptions...)
+	if err != nil {
+		_ = telemetry.Close()
+		return nil, err
+	}
+
+	awsOptions := []consumeraws.Option{consumeraws.WithLogger(logger)}
+	if awsConfig, ok := cfg.AWS(); ok {
+		awsOptions = append(awsOptions, consumeraws.WithConfig(awsConfig))
+	}
+	awsOptions = append(awsOptions, options.awsOptions...)
+	awsService, err := consumeraws.New(cfg.ConsumerAWS(), awsOptions...)
 	if err != nil {
 		_ = telemetry.Close()
 		return nil, err
@@ -99,7 +108,8 @@ func New(ctx context.Context, cfg *config.Config, configurers ...Option) (*Core,
 		config:    cfg,
 		logger:    logger,
 		telemetry: telemetry,
-		consumer:  consumerService,
+		aws:       awsService,
+		rest:      restService,
 		decision:  decisionService,
 		selector:  selectorService,
 		validator: validatorService,
@@ -142,12 +152,20 @@ func (c *Core) Observability() *observability.Observability {
 	return c.telemetry
 }
 
-// Consumer returns the shared consumer service.
-func (c *Core) Consumer() *consumer.Consumer {
+// AWS returns the shared AWS consumer service.
+func (c *Core) AWS() *consumeraws.Client {
 	if c == nil {
 		return nil
 	}
-	return c.consumer
+	return c.aws
+}
+
+// REST returns the shared REST consumer service.
+func (c *Core) REST() *consumerrest.Client {
+	if c == nil {
+		return nil
+	}
+	return c.rest
 }
 
 // Decision returns the shared decision service.
@@ -240,7 +258,7 @@ func (c *Core) resolveTokenConfig(ctx context.Context, tokenConfig config.TokenC
 		return tokenConfig, nil
 	}
 	var secret map[string]string
-	if _, err := c.consumer.GetSecretJSON(ctx, consumertypes.SecretGetInput{SecretID: tokenConfig.SecretID}, &secret); err != nil {
+	if _, err := c.aws.GetSecretJSON(ctx, consumeraws.SecretGetInput{SecretID: tokenConfig.SecretID}, &secret); err != nil {
 		return config.TokenConfig{}, err
 	}
 	clientIDKey := strings.TrimSpace(tokenConfig.SecretClientIDKey)

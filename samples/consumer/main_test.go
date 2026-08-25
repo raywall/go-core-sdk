@@ -6,7 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/raywall/go-core-sdk/services/consumer"
+	consumeraws "github.com/raywall/go-core-sdk/services/consumer/aws"
+	consumerrest "github.com/raywall/go-core-sdk/services/consumer/rest"
 )
 
 func TestRunConsumesRESTAndAWSLikeAdapters(t *testing.T) {
@@ -15,19 +16,24 @@ func TestRunConsumesRESTAndAWSLikeAdapters(t *testing.T) {
 	api := newOrdersAPI()
 	defer api.Close()
 
-	client, err := consumer.New(consumer.Config{},
-		consumer.WithTokenProvider(staticTokenProvider{}),
-		consumer.WithDynamoDBClient(&fakeDynamoDBClient{}),
-		consumer.WithS3Client(&fakeS3Client{}),
-		consumer.WithSecretsManagerClient(&fakeSecretsManagerClient{}),
-		consumer.WithSQSClient(&fakeSQSClient{}),
+	restClient, err := consumerrest.New(consumerrest.Config{},
+		consumerrest.WithTokenProvider(staticTokenProvider{}),
 	)
 	if err != nil {
-		t.Fatalf("consumer.New() error = %v", err)
+		t.Fatalf("rest.New() error = %v", err)
+	}
+	awsClient, err := consumeraws.New(consumeraws.Config{},
+		consumeraws.WithDynamoDBClient(&fakeDynamoDBClient{}),
+		consumeraws.WithS3Client(&fakeS3Client{}),
+		consumeraws.WithSecretsManagerClient(&fakeSecretsManagerClient{}),
+		consumeraws.WithSQSClient(&fakeSQSClient{}),
+	)
+	if err != nil {
+		t.Fatalf("aws.New() error = %v", err)
 	}
 
 	var out bytes.Buffer
-	if err := run(context.Background(), OrdersUseCase{Client: client, APIURL: api.URL, Output: &out}); err != nil {
+	if err := run(context.Background(), OrdersUseCase{REST: restClient, AWS: awsClient, APIURL: api.URL, Output: &out}); err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
 

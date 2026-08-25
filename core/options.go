@@ -13,7 +13,8 @@
 package core
 
 import (
-	"github.com/raywall/go-core-sdk/services/consumer"
+	consumeraws "github.com/raywall/go-core-sdk/services/consumer/aws"
+	consumerrest "github.com/raywall/go-core-sdk/services/consumer/rest"
 	"github.com/raywall/go-core-sdk/services/observability"
 )
 
@@ -21,15 +22,23 @@ import (
 type Option func(*options)
 
 type options struct {
-	consumerOptions      []consumer.Option
+	awsOptions           []consumeraws.Option
 	observabilityOptions []observability.Option
+	restOptions          []consumerrest.Option
 	tokenAutoStart       bool
 }
 
-// WithConsumerOptions appends options used when Core builds the consumer service.
-func WithConsumerOptions(configurers ...consumer.Option) Option {
+// WithAWSOptions appends options used when Core builds the AWS consumer service.
+func WithAWSOptions(configurers ...consumeraws.Option) Option {
 	return func(options *options) {
-		options.consumerOptions = append(options.consumerOptions, configurers...)
+		options.awsOptions = append(options.awsOptions, configurers...)
+	}
+}
+
+// WithRESTOptions appends options used when Core builds the REST consumer service.
+func WithRESTOptions(configurers ...consumerrest.Option) Option {
+	return func(options *options) {
+		options.restOptions = append(options.restOptions, configurers...)
 	}
 }
 

@@ -22,7 +22,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/raywall/go-core-sdk/services/cache"
-	"github.com/raywall/go-core-sdk/services/consumer"
+	consumeraws "github.com/raywall/go-core-sdk/services/consumer/aws"
+	consumerrest "github.com/raywall/go-core-sdk/services/consumer/rest"
 	"github.com/raywall/go-core-sdk/services/observability"
 	"github.com/raywall/go-core-sdk/services/token"
 )
@@ -201,14 +202,23 @@ func (c *Config) AWS() (aws.Config, bool) {
 	return *c.awsConfig, true
 }
 
-// Consumer projects shared configuration to consumer.Config.
-func (c *Config) Consumer() consumer.Config {
+// ConsumerREST projects shared configuration to rest.Config.
+func (c *Config) ConsumerREST() consumerrest.Config {
 	if c == nil {
-		return consumer.Config{}
+		return consumerrest.Config{}
 	}
-	return consumer.Config{
+	return consumerrest.Config{
 		HTTPTimeout: c.httpTimeout,
-		AWSRegion:   c.awsRegion,
+	}
+}
+
+// ConsumerAWS projects shared configuration to aws.Config.
+func (c *Config) ConsumerAWS() consumeraws.Config {
+	if c == nil {
+		return consumeraws.Config{}
+	}
+	return consumeraws.Config{
+		Region: c.awsRegion,
 	}
 }
 

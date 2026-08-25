@@ -12,7 +12,7 @@ import (
 
 	"github.com/raywall/go-core-sdk/config"
 	"github.com/raywall/go-core-sdk/core"
-	"github.com/raywall/go-core-sdk/services/consumer"
+	consumeraws "github.com/raywall/go-core-sdk/services/consumer/aws"
 	"github.com/raywall/go-core-sdk/services/observability"
 )
 
@@ -50,7 +50,7 @@ func TestRunComposesCoreRuntime(t *testing.T) {
 
 	var out bytes.Buffer
 	runtime, err := core.New(ctx, cfg,
-		core.WithConsumerOptions(consumer.WithSecretsManagerClient(fakeSecretsManagerClient{})),
+		core.WithAWSOptions(consumeraws.WithSecretsManagerClient(fakeSecretsManagerClient{})),
 		core.WithObservabilityOptions(observability.WithMetricsClient(stdoutMetricsClient{out: &out})),
 		core.WithTokenAutoStart(true),
 	)
