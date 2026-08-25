@@ -34,7 +34,8 @@
 //		return err
 //	}
 //
-//	consumerConfig := cfg.Consumer()
+//	restConfig := cfg.ConsumerREST()
+//	awsConfig := cfg.ConsumerAWS()
 //
 // Thread safety: Config values returned by Load are immutable by convention.
 // Methods that expose maps copy them before returning service-specific values.

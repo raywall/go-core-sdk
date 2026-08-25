@@ -15,7 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/raywall/go-core-sdk/config"
 	"github.com/raywall/go-core-sdk/core"
-	"github.com/raywall/go-core-sdk/services/consumer"
+	consumeraws "github.com/raywall/go-core-sdk/services/consumer/aws"
 	"github.com/raywall/go-core-sdk/services/observability"
 )
 
@@ -60,7 +60,7 @@ func main() {
 	}
 
 	runtime, err := core.New(ctx, cfg,
-		core.WithConsumerOptions(consumer.WithSecretsManagerClient(fakeSecretsManagerClient{})),
+		core.WithAWSOptions(consumeraws.WithSecretsManagerClient(fakeSecretsManagerClient{})),
 		core.WithObservabilityOptions(observability.WithMetricsClient(stdoutMetricsClient{out: os.Stdout})),
 		core.WithTokenAutoStart(true),
 	)

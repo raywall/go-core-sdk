@@ -57,8 +57,11 @@ func TestLoad_EnvAndProjection(t *testing.T) {
 	if cfg.Version() != "1.4.0" {
 		t.Fatalf("Version() = %q, want 1.4.0", cfg.Version())
 	}
-	if got := cfg.Consumer().HTTPTimeout; got != 7*time.Second {
-		t.Fatalf("Consumer.HTTPTimeout = %s, want 7s", got)
+	if got := cfg.ConsumerREST().HTTPTimeout; got != 7*time.Second {
+		t.Fatalf("ConsumerREST.HTTPTimeout = %s, want 7s", got)
+	}
+	if got := cfg.ConsumerAWS().Region; got != "us-east-1" {
+		t.Fatalf("ConsumerAWS.Region = %q, want us-east-1", got)
 	}
 	if _, ok := cfg.ConfiguredLogger(); !ok {
 		t.Fatal("ConfiguredLogger() ok = false, want true")

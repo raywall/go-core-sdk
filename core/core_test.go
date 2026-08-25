@@ -26,7 +26,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/raywall/go-core-sdk/config"
 	"github.com/raywall/go-core-sdk/core"
-	"github.com/raywall/go-core-sdk/services/consumer"
+	consumeraws "github.com/raywall/go-core-sdk/services/consumer/aws"
 	"github.com/raywall/go-core-sdk/services/observability"
 )
 
@@ -70,7 +70,7 @@ func TestNew_ResolvesTokenCredentialsFromSecretsManagerAndStartsToken(t *testing
 	}
 
 	runtime, err := core.New(context.Background(), cfg,
-		core.WithConsumerOptions(consumer.WithSecretsManagerClient(fakeSecretsManagerClient{})),
+		core.WithAWSOptions(consumeraws.WithSecretsManagerClient(fakeSecretsManagerClient{})),
 		core.WithObservabilityOptions(observability.WithMetricsClient(fakeMetricsClient{}), observability.WithLogger(discardLogger())),
 		core.WithTokenAutoStart(true),
 	)
@@ -86,7 +86,7 @@ func TestNew_ResolvesTokenCredentialsFromSecretsManagerAndStartsToken(t *testing
 	if got := manager.Token().ToString(); got != "Bearer runtime-token" {
 		t.Fatalf("token = %q, want Bearer runtime-token", got)
 	}
-	if runtime.Consumer() == nil || runtime.Validator() == nil || runtime.Decision() == nil || runtime.Selector() == nil {
+	if runtime.AWS() == nil || runtime.REST() == nil || runtime.Validator() == nil || runtime.Decision() == nil || runtime.Selector() == nil {
 		t.Fatal("runtime services must be initialized")
 	}
 	if runtime.Observability() == nil {

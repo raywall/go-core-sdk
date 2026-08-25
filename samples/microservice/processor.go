@@ -22,8 +22,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/raywall/go-core-sdk/services/consumer"
-	consumertypes "github.com/raywall/go-core-sdk/services/consumer/types"
+	consumeraws "github.com/raywall/go-core-sdk/services/consumer/aws"
+	consumerrest "github.com/raywall/go-core-sdk/services/consumer/rest"
 	"github.com/raywall/go-core-sdk/services/decision"
 	decisiontypes "github.com/raywall/go-core-sdk/services/decision/types"
 	"github.com/raywall/go-core-sdk/services/observability"
@@ -39,7 +39,8 @@ const dateLayout = "2006-01-02"
 type paymentRuntime interface {
 	Logger() *slog.Logger
 	Observability() *observability.Observability
-	Consumer() *consumer.Consumer
+	AWS() *consumeraws.Client
+	REST() *consumerrest.Client
 	Decision() *decision.Decision
 	Selector() *selector.Selector
 	Validator() *validation.Validator
@@ -122,7 +123,7 @@ func (p *paymentProcessor) processRecord(ctx context.Context, record s3Notificat
 }
 
 func (p *paymentProcessor) loadInstruction(ctx context.Context, record s3NotificationRecord) (paymentInstruction, error) {
-	object, err := p.runtime.Consumer().GetS3(ctx, consumertypes.S3GetInput{
+	object, err := p.runtime.AWS().GetS3(ctx, consumeraws.S3GetInput{
 		Bucket: record.S3.Bucket.Name,
 		Key:    record.S3.Object.Key,
 	})
@@ -169,7 +170,7 @@ func (p *paymentProcessor) loadFinancing(ctx context.Context, instruction paymen
 	}
 
 	url := strings.TrimRight(p.financingAPI, "/") + "/financings/" + instruction.FinancingID
-	response, err := p.runtime.Consumer().REST(http.MethodGet, url).
+	response, err := p.runtime.REST().REST(http.MethodGet, url).
 		WithHeader("Authorization", manager.Token().ToString()).
 		WithHeader("Accept", "application/json").
 		Do(ctx)
@@ -265,7 +266,7 @@ func (p *paymentProcessor) publishPaymentEvent(ctx context.Context, event paymen
 		return err
 	}
 
-	output, err := p.runtime.Consumer().SendSQS(ctx, consumertypes.SQSSendInput{
+	output, err := p.runtime.AWS().SendSQS(ctx, consumeraws.SQSSendInput{
 		QueueURL: p.paymentQueue,
 		Body:     string(body),
 		MessageAttributes: map[string]string{

@@ -19,8 +19,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
-	"github.com/raywall/go-core-sdk/services/consumer"
-	consumertypes "github.com/raywall/go-core-sdk/services/consumer/types"
+	consumeraws "github.com/raywall/go-core-sdk/services/consumer/aws"
+	consumerrest "github.com/raywall/go-core-sdk/services/consumer/rest"
 )
 
 func main() {
@@ -28,19 +28,25 @@ func main() {
 	api := newOrdersAPI()
 	defer api.Close()
 
-	client, err := consumer.New(consumer.Config{},
-		consumer.WithTokenProvider(staticTokenProvider{}),
-		consumer.WithDynamoDBClient(&fakeDynamoDBClient{}),
-		consumer.WithS3Client(&fakeS3Client{}),
-		consumer.WithSecretsManagerClient(&fakeSecretsManagerClient{}),
-		consumer.WithSQSClient(&fakeSQSClient{}),
+	restClient, err := consumerrest.New(consumerrest.Config{},
+		consumerrest.WithTokenProvider(staticTokenProvider{}),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	awsClient, err := consumeraws.New(consumeraws.Config{},
+		consumeraws.WithDynamoDBClient(&fakeDynamoDBClient{}),
+		consumeraws.WithS3Client(&fakeS3Client{}),
+		consumeraws.WithSecretsManagerClient(&fakeSecretsManagerClient{}),
+		consumeraws.WithSQSClient(&fakeSQSClient{}),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	if err := run(ctx, OrdersUseCase{
-		Client: client,
+		REST:   restClient,
+		AWS:    awsClient,
 		APIURL: api.URL,
 		Output: os.Stdout,
 	}); err != nil {
@@ -50,7 +56,8 @@ func main() {
 
 // OrdersUseCase demonstrates outbound REST and AWS-like consumer adapters.
 type OrdersUseCase struct {
-	Client *consumer.Consumer
+	REST   *consumerrest.Client
+	AWS    *consumeraws.Client
 	APIURL string
 	Output io.Writer
 }
@@ -60,8 +67,7 @@ func run(ctx context.Context, useCase OrdersUseCase) error {
 }
 
 func (u OrdersUseCase) Execute(ctx context.Context) error {
-	client := u.Client
-	restResponse, err := client.REST(http.MethodPost, u.APIURL).
+	restResponse, err := u.REST.REST(http.MethodPost, u.APIURL).
 		WithHeader("X-App", "orders-api").
 		WithBody(map[string]any{"customerId": "CUSTOMER#1"}).
 		WithToken().
@@ -75,7 +81,7 @@ func (u OrdersUseCase) Execute(ctx context.Context) error {
 		return err
 	}
 
-	if err := client.PutDynamoDB(ctx, consumertypes.DynamoDBPutInput{
+	if err := u.AWS.PutDynamoDB(ctx, consumeraws.DynamoDBPutInput{
 		TableName: "orders",
 		Item:      order,
 	}); err != nil {
@@ -83,7 +89,7 @@ func (u OrdersUseCase) Execute(ctx context.Context) error {
 	}
 
 	var stored orderRecord
-	getOutput, err := client.GetDynamoDB(ctx, consumertypes.DynamoDBGetInput{
+	getOutput, err := u.AWS.GetDynamoDB(ctx, consumeraws.DynamoDBGetInput{
 		TableName: "orders",
 		Key:       map[string]string{"id": "ORDER#1"},
 		Target:    &stored,
@@ -92,7 +98,7 @@ func (u OrdersUseCase) Execute(ctx context.Context) error {
 		return err
 	}
 
-	s3Output, err := client.PutS3(ctx, consumertypes.S3PutInput{
+	s3Output, err := u.AWS.PutS3(ctx, consumeraws.S3PutInput{
 		Bucket:      "orders-files",
 		Key:         "ORDER#1.json",
 		Body:        restResponse.Body,
@@ -102,7 +108,7 @@ func (u OrdersUseCase) Execute(ctx context.Context) error {
 		return err
 	}
 
-	sqsOutput, err := client.SendSQS(ctx, consumertypes.SQSSendInput{
+	sqsOutput, err := u.AWS.SendSQS(ctx, consumeraws.SQSSendInput{
 		QueueURL: "https://sqs.us-east-1.amazonaws.com/123/orders",
 		Body:     string(restResponse.Body),
 		MessageAttributes: map[string]string{
@@ -113,7 +119,7 @@ func (u OrdersUseCase) Execute(ctx context.Context) error {
 		return err
 	}
 
-	receiveOutput, err := client.ReceiveSQS(ctx, consumertypes.SQSReceiveInput{
+	receiveOutput, err := u.AWS.ReceiveSQS(ctx, consumeraws.SQSReceiveInput{
 		QueueURL:              "https://sqs.us-east-1.amazonaws.com/123/orders",
 		MaxNumberOfMessages:   1,
 		WaitTimeSeconds:       1,
@@ -124,7 +130,7 @@ func (u OrdersUseCase) Execute(ctx context.Context) error {
 	}
 
 	var database databaseSecret
-	if _, err := client.GetSecretJSON(ctx, consumertypes.SecretGetInput{SecretID: "orders/database"}, &database); err != nil {
+	if _, err := u.AWS.GetSecretJSON(ctx, consumeraws.SecretGetInput{SecretID: "orders/database"}, &database); err != nil {
 		return err
 	}
 
@@ -159,7 +165,7 @@ func newOrdersAPI() *httptest.Server {
 
 type staticTokenProvider struct{}
 
-func (staticTokenProvider) Token() consumertypes.AuthorizationToken {
+func (staticTokenProvider) Token() consumerrest.AuthorizationToken {
 	return staticToken{}
 }
 

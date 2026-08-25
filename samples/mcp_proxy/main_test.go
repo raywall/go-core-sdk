@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/raywall/go-core-sdk/services/mcp/proxy"
-	proxytypes "github.com/raywall/go-core-sdk/services/mcp/proxy/types"
+	"github.com/raywall/go-core-sdk/ai/mcp/proxy"
+	proxytypes "github.com/raywall/go-core-sdk/ai/mcp/proxy/types"
 )
 
 func TestRunListsAndInvokesProxyTool(t *testing.T) {

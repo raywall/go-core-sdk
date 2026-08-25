@@ -23,7 +23,7 @@ import (
 
 	"github.com/raywall/go-core-sdk/config"
 	"github.com/raywall/go-core-sdk/core"
-	"github.com/raywall/go-core-sdk/services/consumer"
+	consumeraws "github.com/raywall/go-core-sdk/services/consumer/aws"
 	"github.com/raywall/go-core-sdk/services/environment"
 	"github.com/raywall/go-core-sdk/services/observability"
 )
@@ -85,13 +85,13 @@ func run(ctx context.Context, out io.Writer) (paymentEvent, error) {
 	}
 
 	runtime, err := core.New(ctx, cfg,
-		core.WithConsumerOptions(
-			consumer.WithSecretsManagerClient(fakeSecretsManagerClient{
+		core.WithAWSOptions(
+			consumeraws.WithSecretsManagerClient(fakeSecretsManagerClient{
 				secretID: settings.SecretID,
 				value:    `{"client_id":"student-financing-client","client_secret":"student-financing-secret"}`,
 			}),
-			consumer.WithS3Client(s3Client),
-			consumer.WithSQSClient(sqsClient),
+			consumeraws.WithS3Client(s3Client),
+			consumeraws.WithSQSClient(sqsClient),
 		),
 		core.WithObservabilityOptions(
 			observability.WithMetricsClient(stdoutMetricsClient{out: out}),

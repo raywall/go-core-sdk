@@ -4,6 +4,10 @@ test:
 	@echo "Iniciando testes da biblioteca go-core-sdk ..."; \
 	 go test -v ./...;
 
+agent:
+	@echo "Executando exemplo de uso do ai/agent ..."; \
+	 go run samples/agent/main.go;
+
 cache:
 	@echo "Executando exemplo de uso do services/cache ..."; \
 	 go run samples/cache/main.go;
@@ -24,8 +28,16 @@ env:
 	@echo "Executando exemplo de uso do services/environment ..."; \
 	 go run samples/environment/main.go;
 
+handler:
+	@echo "Executando exemplo de uso do handlers ..."; \
+	 go run samples/handlers/main.go;
+
+hazelcast:
+	@echo "Executando exemplo de uso do services/consumer/hazelcast ..."; \
+	 go run samples/hazelcast/main.go;
+
 mcp-proxy:
-	@echo "Executando exemplo de uso do services/mcp/proxy ..."; \
+	@echo "Executando exemplo de uso do ai/mcp/proxy ..."; \
 	 go run samples/mcp_proxy/main.go;
 
 microservice:

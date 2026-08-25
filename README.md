@@ -8,16 +8,25 @@
 | --- | --- | --- |
 | Config | `github.com/raywall/go-core-sdk/config` | Centraliza carregamento de configuracoes compartilhadas, com loaders/resolvers inspirados no AWS SDK. |
 | Core | `github.com/raywall/go-core-sdk/core` | Compoe services em um runtime de aplicacao, resolvendo secrets e gerenciando lifecycle de token managers. |
+| Handlers | `github.com/raywall/go-core-sdk/handlers` | Define contratos runtime-neutral e adapters para Lambda, HTTP/ECS/EKS/EC2 e worker SQS. |
+
+## AI Packages
+
+| Package | Import | Descricao |
+| --- | --- | --- |
+| Agent | `github.com/raywall/go-core-sdk/ai/agent` | Cria e testa agentes com APIs OpenAI-compatible, prompt, tools e memoria. |
+| MCP Proxy | `github.com/raywall/go-core-sdk/ai/mcp/proxy` | Expoe servicos HTTP existentes como tools MCP-friendly para aceleracao tatica de agentes. |
 
 ## Services
 
 | Service | Package | Descricao |
 | --- | --- | --- |
 | Cache | `github.com/raywall/go-core-sdk/services/cache` | Mantem entidades temporarias em memoria com TTL, consulta, limpeza e expurgo automatico. |
-| Consumer | `github.com/raywall/go-core-sdk/services/consumer` | Simplifica chamadas REST com token opcional e operacoes comuns de DynamoDB, S3, Secrets Manager e SQS. |
+| Consumer REST | `github.com/raywall/go-core-sdk/services/consumer/rest` | Client para chamadas REST com headers, body flexivel e token provider opcional. |
+| Consumer AWS | `github.com/raywall/go-core-sdk/services/consumer/aws` | Clients para DynamoDB, S3, Secrets Manager e SQS usando AWS SDK v2. |
+| Consumer Hazelcast | `github.com/raywall/go-core-sdk/services/consumer/hazelcast` | Client para carregar config Hazelcast e ler parametros em maps distribuidos. |
 | Decision | `github.com/raywall/go-core-sdk/services/decision` | Avalia regras de decisao em CEL expression contra multiplas entidades com cache de compilacao. |
 | Environment | `github.com/raywall/go-core-sdk/services/environment` | Facilita leitura de variaveis de ambiente obrigatorias ou com valores padrao. |
-| MCP Proxy | `github.com/raywall/go-core-sdk/services/mcp/proxy` | Expoe servicos HTTP existentes como tools MCP-friendly para aceleracao tatica de agentes. |
 | Observability | `github.com/raywall/go-core-sdk/services/observability` | Centraliza logs JSON estruturados e envio simplificado de custom metrics para Datadog. |
 | Parser | `github.com/raywall/go-core-sdk/services/parser` | Converte DTOs, entidades, maps e colecoes usando JSON como formato intermediario e tags `json` compativeis. |
 | Selector | `github.com/raywall/go-core-sdk/services/selector` | Ordena itens financeiros por atributo e seleciona pagamentos integrais ou parciais com valores em unidade minima. |
@@ -62,11 +71,12 @@ func main() {
 	}
 	defer runtime.Stop()
 
-	consumer := runtime.Consumer()
+	restClient := runtime.REST()
+	awsClient := runtime.AWS()
 	validator := runtime.Validator()
 	decision := runtime.Decision()
 
-	_, _, _ = consumer, validator, decision
+	_, _, _, _ = restClient, awsClient, validator, decision
 }
 ```
 
@@ -80,7 +90,69 @@ O sample composto em `samples/microservice` demonstra um fluxo local de microser
 
 ```sh
 go run ./samples/microservice
+go run ./samples/agent
+go run ./samples/hazelcast
 go test ./samples/...
+```
+
+## Agent
+
+O package `ai/agent` facilita prototipar agentes em Go usando APIs OpenAI-compatible. Ele permite configurar o endpoint do modelo, especializar com prompt de sistema, registrar tools com JSON Schema, acoplar memorias de curto e longo prazo e executar inferencias com loop de tool-calling.
+
+```go
+client, err := agent.New(agent.Config{
+	BaseURL:      "http://localhost:12434/engines/v1",
+	Model:        "ai/smollm2",
+	SystemPrompt: "You are a concise assistant.",
+}, agent.WithShortTermMemory(agent.NewShortTermMemory(12)), agent.WithTools(agent.Tool{
+	Name:        "lookup_payment",
+	Description: "Looks up payment information.",
+	Parameters: json.RawMessage(`{"type":"object"}`),
+	Handler: func(ctx context.Context, args json.RawMessage) (any, error) {
+		return map[string]any{"status": "ok"}, nil
+	},
+}))
+if err != nil {
+	return err
+}
+
+result, err := client.Infer(ctx, agent.InferenceInput{Prompt: "Check payment status"})
+```
+
+## Handlers
+
+O package `handlers` define um contrato neutro para processors de aplicacao e adapters para diferentes runtimes. Isso permite manter a regra de negocio igual enquanto o deploy muda entre Lambda, HTTP em ECS/EKS/EC2 ou worker SQS.
+
+```go
+processor := handlers.ProcessorFunc(func(ctx context.Context, event handlers.Event) (handlers.Result, error) {
+	for _, record := range event.Records {
+		_ = record
+	}
+	return handlers.Result{Processed: len(event.Records)}, nil
+})
+
+selected, err := runner.NewFromEnv("APP", processor)
+if err != nil {
+	return err
+}
+if err := selected.Start(ctx); err != nil {
+	return err
+}
+```
+
+Variaveis comuns:
+
+```sh
+APP_HANDLER_RUNTIME=lambda
+APP_HANDLER_TRIGGER=s3
+
+APP_HANDLER_RUNTIME=http
+APP_HANDLER_TRIGGER=s3
+APP_HANDLER_HTTP_ADDRESS=:8080
+
+APP_HANDLER_RUNTIME=sqs-worker
+APP_HANDLER_TRIGGER=sqs
+APP_HANDLER_SQS_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/123/orders
 ```
 
 ## Observability
@@ -121,7 +193,7 @@ func main() {
 
 ## MCP Proxy
 
-O service `mcp/proxy` permite mapear endpoints HTTP ja existentes, como API Gateway, Lambda URL, ECS ou servicos atras de Load Balancer, para contratos de tools que podem ser expostos por um MCP server. Ele e uma solucao tatica para acelerar agentes enquanto uma integracao MCP definitiva e desenhada.
+O package `ai/mcp/proxy` permite mapear endpoints HTTP ja existentes, como API Gateway, Lambda URL, ECS ou servicos atras de Load Balancer, para contratos de tools que podem ser expostos por um MCP server. Ele e uma solucao tatica para acelerar agentes enquanto uma integracao MCP definitiva e desenhada.
 
 ```go
 package main
@@ -132,8 +204,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/raywall/go-core-sdk/services/mcp/proxy"
-	proxytypes "github.com/raywall/go-core-sdk/services/mcp/proxy/types"
+	"github.com/raywall/go-core-sdk/ai/mcp/proxy"
+	proxytypes "github.com/raywall/go-core-sdk/ai/mcp/proxy/types"
 )
 
 func main() {
@@ -235,7 +307,7 @@ func main() {
 
 ## Consumer
 
-O service `consumer` centraliza integracoes comuns de microservicos: chamadas REST com headers e body flexiveis, injecao opcional de Authorization a partir do `services/token`, e operacoes simples em DynamoDB, S3, Secrets Manager e SQS usando AWS SDK v2.
+O service `consumer` e dividido em packages explicitos: `consumer/rest` para chamadas HTTP, `consumer/aws` para DynamoDB, S3, Secrets Manager e SQS, e `consumer/hazelcast` para parametros em maps Hazelcast. Nao ha fachada no package raiz; aplicacoes que usam varios adapters devem instanciar os clients necessarios ou usar os clients expostos por `core` quando aplicavel.
 
 ```go
 package main
@@ -245,8 +317,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/raywall/go-core-sdk/services/consumer"
-	consumertypes "github.com/raywall/go-core-sdk/services/consumer/types"
+	consumeraws "github.com/raywall/go-core-sdk/services/consumer/aws"
+	consumerrest "github.com/raywall/go-core-sdk/services/consumer/rest"
 	"github.com/raywall/go-core-sdk/services/token"
 )
 
@@ -269,14 +341,16 @@ func main() {
 		log.Fatal(err)
 	}
 
-	client, err := consumer.New(consumer.Config{AWSRegion: "us-east-1"},
-		consumer.WithTokenProvider(manager),
-	)
+	restClient, err := consumerrest.New(consumerrest.Config{}, consumerrest.WithTokenProvider(manager))
+	if err != nil {
+		log.Fatal(err)
+	}
+	awsClient, err := consumeraws.New(consumeraws.Config{Region: "us-east-1"})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	response, err := client.REST(http.MethodPost, "https://api.example.com/orders").
+	response, err := restClient.REST(http.MethodPost, "https://api.example.com/orders").
 		WithHeader("X-App", "orders-api").
 		WithBody(map[string]any{"customerId": "123"}).
 		WithToken().
@@ -285,7 +359,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	err = client.PutDynamoDB(ctx, consumertypes.DynamoDBPutInput{
+	err = awsClient.PutDynamoDB(ctx, consumeraws.DynamoDBPutInput{
 		TableName: "orders",
 		Item:      map[string]any{"PK": "ORDER#1", "status": "CREATED"},
 	})
@@ -293,7 +367,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	_, err = client.PutS3(ctx, consumertypes.S3PutInput{
+	_, err = awsClient.PutS3(ctx, consumeraws.S3PutInput{
 		Bucket:      "orders-files",
 		Key:         "ORDER#1.json",
 		Body:        response.Body,
@@ -304,20 +378,55 @@ func main() {
 	}
 
 	var database DatabaseSecret
-	_, err = client.GetSecretJSON(ctx, consumertypes.SecretGetInput{
+	_, err = awsClient.GetSecretJSON(ctx, consumeraws.SecretGetInput{
 		SecretID: "orders/database",
 	}, &database)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	_, err = client.SendSQS(ctx, consumertypes.SQSSendInput{
+	_, err = awsClient.SendSQS(ctx, consumeraws.SQSSendInput{
 		QueueURL: "https://sqs.us-east-1.amazonaws.com/123/orders",
 		Body:     string(response.Body),
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+```
+
+Uso do consumer Hazelcast:
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+
+	consumerhazelcast "github.com/raywall/go-core-sdk/services/consumer/hazelcast"
+)
+
+func main() {
+	ctx := context.Background()
+	client, err := consumerhazelcast.New(ctx, consumerhazelcast.Config{
+		Source: consumerhazelcast.Source{
+			Kind: consumerhazelcast.SourceS3,
+			Bucket: "app-configs",
+			Key: "hazelcast/client.json",
+		},
+		DefaultMap: "runtime-parameters",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer client.Close(ctx)
+
+	enabled, found, err := client.GetBool(ctx, "", "payment.enabled")
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, _ = enabled, found
 }
 ```
 
