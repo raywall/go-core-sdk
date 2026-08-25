@@ -531,7 +531,7 @@ func main() {
 
 ## Selector
 
-O service `selector` ordena itens por um atributo configurado e aplica um valor disponivel sobre essa lista ordenada. Valores financeiros usam `int64` na unidade minima do dominio, por exemplo centavos.
+O service `selector` ordena itens por um atributo configurado e aplica um valor disponivel sobre essa lista ordenada. Valores financeiros sao retornados como `int64` na unidade minima do dominio, por exemplo centavos. O valor disponivel e os valores dos itens tambem podem chegar como decimal/string/float quando `DecimalScale` for informado, e datas string no formato `YYYY-MM-DD` sao aceitas por `KindTime` sem layout customizado.
 
 ```go
 package main

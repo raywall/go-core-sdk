@@ -122,19 +122,25 @@ func numberValue(value any) (float64, error) {
 
 func timeValue(value any, layout string) (time.Time, error) {
 	value = unwrap(value)
-	if layout == "" {
-		layout = time.RFC3339
-	}
 
 	switch typed := value.(type) {
 	case time.Time:
 		return typed, nil
 	case string:
-		parsed, err := time.Parse(layout, typed)
-		if err != nil {
-			return time.Time{}, types.IncompatibleTypeError{Value: value, Expected: "time value"}
+		if layout != "" {
+			parsed, err := time.Parse(layout, strings.TrimSpace(typed))
+			if err != nil {
+				return time.Time{}, types.IncompatibleTypeError{Value: value, Expected: "time value"}
+			}
+			return parsed, nil
 		}
-		return parsed, nil
+		for _, candidate := range []string{time.RFC3339, time.RFC3339Nano, time.DateOnly} {
+			parsed, err := time.Parse(candidate, strings.TrimSpace(typed))
+			if err == nil {
+				return parsed, nil
+			}
+		}
+		return time.Time{}, types.IncompatibleTypeError{Value: value, Expected: "time value"}
 	default:
 		return time.Time{}, types.IncompatibleTypeError{Value: value, Expected: "time value"}
 	}
