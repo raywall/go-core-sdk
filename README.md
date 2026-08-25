@@ -88,8 +88,11 @@ Os exemplos em `samples/` sao executaveis com `go run` e tambem possuem testes. 
 
 O sample composto em `samples/microservice` demonstra um fluxo local de microservico que combina `config`, `core`, Secrets Manager, token management, S3, REST, validation, parser, selector, decision, SQS, logs estruturados e metricas customizadas.
 
+O sample `samples/nanoservice` demonstra um servico menor, com uma unica responsabilidade: consumir eventos SQS em um worker ECS, validar o DTO, montar a entidade interna, consultar uma API REST com token, ordenar parcelas abertas/em atraso com `selector`, permitir pagamento parcial, avaliar regras de negocio e publicar um evento SQS de pagamento.
+
 ```sh
 go run ./samples/microservice
+go run ./samples/nanoservice
 go run ./samples/agent
 go run ./samples/hazelcast
 go test ./samples/...
