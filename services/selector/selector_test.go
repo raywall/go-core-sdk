@@ -78,6 +78,28 @@ func TestSortOrdersTypedItemsByNumberStringAndTime(t *testing.T) {
 	assertIDs(t, byDate, []string{"c", "b", "a"})
 }
 
+// TestSortTimeKindParsesDateOnlyStringsByDefault verifies date-only strings do
+// not require callers to provide a custom time layout.
+func TestSortTimeKindParsesDateOnlyStringsByDefault(t *testing.T) {
+	t.Parallel()
+
+	items := []types.Item{
+		{"id": "newest", "dueDate": "2025-08-13"},
+		{"id": "oldest", "dueDate": "2025-07-01"},
+		{"id": "middle", "dueDate": "2025-08-01"},
+	}
+
+	ordered, err := selector.Sort(context.Background(), items, types.SortConfig{
+		Path: "dueDate",
+		Kind: types.KindTime,
+	}, discardLogs())
+	if err != nil {
+		t.Fatalf("selector.Sort error = %v", err)
+	}
+
+	assertItemIDs(t, ordered, []string{"oldest", "middle", "newest"})
+}
+
 // TestSortPreservesStableOrder verifies equal sort keys retain their original
 // relative order.
 func TestSortPreservesStableOrder(t *testing.T) {
@@ -183,6 +205,38 @@ func TestSelectConvertsDecimalValuesWithScale(t *testing.T) {
 	}
 }
 
+// TestSelectAcceptsDecimalAvailableAmount verifies the available amount can be
+// provided as a decimal value and converted with the same decimal scale.
+func TestSelectAcceptsDecimalAvailableAmount(t *testing.T) {
+	t.Parallel()
+
+	result, err := selector.Select(context.Background(), []types.Item{
+		{"id": "1", "amount": "100.11"},
+		{"id": "2", "amount": 60.50},
+	}, types.SelectionConfig{
+		AmountPath:      "amount",
+		AvailableAmount: 130.32,
+		Mode:            types.ModePartial,
+		DecimalScale:    100,
+	}, discardLogs())
+	if err != nil {
+		t.Fatalf("selector.Select error = %v", err)
+	}
+
+	if got, want := len(result.Payments), 2; got != want {
+		t.Fatalf("payments length = %d, want %d", got, want)
+	}
+	if got, want := result.TotalAppliedAmount, int64(13032); got != want {
+		t.Fatalf("TotalAppliedAmount = %d, want %d", got, want)
+	}
+	if got, want := result.Payments[1].AppliedAmount, int64(3021); got != want {
+		t.Fatalf("partial AppliedAmount = %d, want %d", got, want)
+	}
+	if !result.Payments[1].Partial {
+		t.Fatal("partial payment Partial = false, want true")
+	}
+}
+
 // TestSortAndSelectItemsClonesSelectedMaps verifies generic map results do not
 // share selected item maps with the caller.
 func TestSortAndSelectItemsClonesSelectedMaps(t *testing.T) {
@@ -251,6 +305,9 @@ func TestSelectorReturnsHelpfulErrors(t *testing.T) {
 	if _, err := selector.Select(context.Background(), []installment{{Amount: -1}}, types.SelectionConfig{AmountPath: "amount", AvailableAmount: 1}, discardLogs()); !isInvalidAmount(err) {
 		t.Fatalf("Select invalid amount error = %T %[1]v, want InvalidAmountError", err)
 	}
+	if _, err := selector.Select(context.Background(), []installment{{Amount: 1}}, types.SelectionConfig{AmountPath: "amount", AvailableAmount: -1}, discardLogs()); !isInvalidAmount(err) {
+		t.Fatalf("Select invalid available amount error = %T %[1]v, want InvalidAmountError", err)
+	}
 }
 
 func newTestSelector(t *testing.T) *selector.Selector {
@@ -276,6 +333,19 @@ func assertIDs(t *testing.T, items []installment, want []string) {
 	for index := range items {
 		if items[index].ID != want[index] {
 			t.Fatalf("items[%d].ID = %q, want %q; items=%+v", index, items[index].ID, want[index], items)
+		}
+	}
+}
+
+func assertItemIDs(t *testing.T, items []types.Item, want []string) {
+	t.Helper()
+
+	if len(items) != len(want) {
+		t.Fatalf("items length = %d, want %d", len(items), len(want))
+	}
+	for index := range items {
+		if items[index]["id"] != want[index] {
+			t.Fatalf("items[%d].id = %q, want %q; items=%+v", index, items[index]["id"], want[index], items)
 		}
 	}
 }

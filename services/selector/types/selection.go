@@ -30,9 +30,10 @@ const (
 type SelectionConfig struct {
 	// AmountPath is the item field path that contains the required amount.
 	AmountPath string
-	// AvailableAmount is the amount available to apply, represented in the
-	// caller's minimum monetary unit, such as cents.
-	AvailableAmount int64
+	// AvailableAmount is the amount available to apply. It may be provided as
+	// an integer already represented in the caller's minimum monetary unit or
+	// as a decimal string/float converted with DecimalScale.
+	AvailableAmount any
 	// Mode controls whether partially covered items may be returned. A zero
 	// value uses ModeIntegral.
 	Mode SelectionMode

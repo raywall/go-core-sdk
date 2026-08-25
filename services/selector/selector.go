@@ -201,8 +201,12 @@ func selectTyped[T any](ctx context.Context, selector *Selector, items []T, conf
 	if err := validateSelectionConfig(config); err != nil {
 		return types.SelectionResult[T]{}, err
 	}
+	availableAmount, err := availableAmountValue(config)
+	if err != nil {
+		return types.SelectionResult[T]{}, err
+	}
 
-	result := types.SelectionResult[T]{RemainingAmount: config.AvailableAmount}
+	result := types.SelectionResult[T]{RemainingAmount: availableAmount}
 	for _, item := range items {
 		if err := ctx.Err(); err != nil {
 			return types.SelectionResult[T]{}, err
@@ -295,9 +299,6 @@ func validateSelectionConfig(config types.SelectionConfig) error {
 	if config.AmountPath == "" {
 		return types.InvalidConfigError{Field: "AmountPath", Reason: "is required"}
 	}
-	if config.AvailableAmount < 0 {
-		return types.InvalidAmountError{Value: config.AvailableAmount, Reason: "available amount must not be negative"}
-	}
 	if config.DecimalScale <= 0 {
 		return types.InvalidConfigError{Field: "DecimalScale", Reason: "must be greater than zero"}
 	}
@@ -307,4 +308,11 @@ func validateSelectionConfig(config types.SelectionConfig) error {
 		return types.InvalidConfigError{Field: "Mode", Reason: "unsupported selection mode"}
 	}
 	return nil
+}
+
+func availableAmountValue(config types.SelectionConfig) (int64, error) {
+	if config.AvailableAmount == nil {
+		return 0, nil
+	}
+	return selectorinternal.AmountValue(config.AvailableAmount, config.DecimalScale, "AvailableAmount")
 }

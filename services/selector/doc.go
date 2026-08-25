@@ -15,8 +15,9 @@
 //
 // The package is useful for flows such as ordering overdue installments from
 // oldest to newest and then selecting which installments can be fully or
-// partially paid. Financial amounts are represented as int64 in the caller's
-// minimum monetary unit, such as cents, to avoid floating-point drift.
+// partially paid. Financial amounts are returned as int64 in the caller's
+// minimum monetary unit, such as cents, to avoid floating-point drift. Decimal
+// inputs can be converted with SelectionConfig.DecimalScale.
 //
 // Usage:
 //

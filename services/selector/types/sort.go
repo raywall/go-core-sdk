@@ -52,6 +52,7 @@ type SortConfig struct {
 	// zero value uses ascending order.
 	Direction Direction
 	// TimeLayout is used to parse string values when Kind is KindTime. A zero
-	// value uses time.RFC3339.
+	// value accepts time.RFC3339, time.RFC3339Nano and date-only strings in
+	// YYYY-MM-DD format.
 	TimeLayout string
 }
