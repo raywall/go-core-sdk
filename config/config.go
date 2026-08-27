@@ -38,12 +38,14 @@ const (
 
 // Config contains shared runtime configuration and service-specific projections.
 type Config struct {
-	serviceName string
-	environment string
-	version     string
-	awsRegion   string
-	httpTimeout time.Duration
-	logger      *slog.Logger
+	serviceName    string
+	environment    string
+	version        string
+	awsRegion      string
+	awsEndpointURL string
+	s3UsePathStyle bool
+	httpTimeout    time.Duration
+	logger         *slog.Logger
 
 	awsConfig     *aws.Config
 	customLogger  bool
@@ -178,6 +180,22 @@ func (c *Config) AWSRegion() string {
 	return c.awsRegion
 }
 
+// AWSEndpointURL returns the configured AWS endpoint override.
+func (c *Config) AWSEndpointURL() string {
+	if c == nil {
+		return ""
+	}
+	return c.awsEndpointURL
+}
+
+// S3UsePathStyle returns whether S3 path-style addressing is enabled.
+func (c *Config) S3UsePathStyle() bool {
+	if c == nil {
+		return false
+	}
+	return c.s3UsePathStyle
+}
+
 // Logger returns the configured structured logger.
 func (c *Config) Logger() *slog.Logger {
 	if c == nil || c.logger == nil {
@@ -218,7 +236,9 @@ func (c *Config) ConsumerAWS() consumeraws.Config {
 		return consumeraws.Config{}
 	}
 	return consumeraws.Config{
-		Region: c.awsRegion,
+		Region:         c.awsRegion,
+		EndpointURL:    c.awsEndpointURL,
+		S3UsePathStyle: c.s3UsePathStyle,
 	}
 }
 
@@ -321,6 +341,7 @@ func resolveDefaults(_ context.Context, cfg *Config) error {
 	cfg.environment = strings.TrimSpace(cfg.environment)
 	cfg.version = strings.TrimSpace(cfg.version)
 	cfg.awsRegion = strings.TrimSpace(cfg.awsRegion)
+	cfg.awsEndpointURL = strings.TrimRight(strings.TrimSpace(cfg.awsEndpointURL), "/")
 	cfg.observability.ServiceName = defaultIfEmpty(cfg.observability.ServiceName, cfg.serviceName)
 	cfg.observability.Environment = defaultIfEmpty(cfg.observability.Environment, cfg.environment)
 	cfg.observability.Version = defaultIfEmpty(cfg.observability.Version, cfg.version)

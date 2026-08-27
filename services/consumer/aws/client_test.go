@@ -17,10 +17,13 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	dynamodbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -84,6 +87,59 @@ func TestClient_S3OperationsUseConfiguredClient(t *testing.T) {
 	}
 	if got := readAllString(t, s3Client.putInput.Body); got != "hello" {
 		t.Fatalf("put body = %q, want %q", got, "hello")
+	}
+}
+
+func TestClient_S3UsesPathStyleWithConfiguredEndpoint(t *testing.T) {
+	t.Parallel()
+
+	type capturedRequest struct {
+		host string
+		path string
+	}
+	requests := make(chan capturedRequest, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- capturedRequest{host: r.Host, path: r.URL.Path}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client, err := consumeraws.New(
+		consumeraws.Config{
+			Region:         "us-east-1",
+			EndpointURL:    server.URL,
+			S3UsePathStyle: true,
+		},
+		consumeraws.WithLogger(discardLogger()),
+		consumeraws.WithConfig(awssdk.Config{
+			Region: "us-east-1",
+			Credentials: awssdk.NewCredentialsCache(credentials.NewStaticCredentialsProvider(
+				"access-key",
+				"secret-key",
+				"",
+			)),
+		}),
+	)
+	if err != nil {
+		t.Fatalf("aws.New() error = %v", err)
+	}
+
+	_, err = client.PutS3(context.Background(), consumeraws.S3PutInput{
+		Bucket: "docs",
+		Key:    "a.txt",
+		Body:   "hello",
+	})
+	if err != nil {
+		t.Fatalf("PutS3() error = %v", err)
+	}
+
+	got := <-requests
+	wantHost := strings.TrimPrefix(server.URL, "http://")
+	if got.host != wantHost {
+		t.Fatalf("request host = %q, want %q", got.host, wantHost)
+	}
+	if got.path != "/docs/a.txt" {
+		t.Fatalf("request path = %q, want /docs/a.txt", got.path)
 	}
 }
 

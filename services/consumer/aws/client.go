@@ -116,7 +116,11 @@ func (c *Client) dynamoDBClient(ctx context.Context) (DynamoDBClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := dynamodb.NewFromConfig(cfg)
+	client := dynamodb.NewFromConfig(cfg, func(options *dynamodb.Options) {
+		if c.config.EndpointURL != "" {
+			options.BaseEndpoint = awssdk.String(c.config.EndpointURL)
+		}
+	})
 
 	c.mu.Lock()
 	if c.dynamoDB == nil {
@@ -140,7 +144,12 @@ func (c *Client) s3Client(ctx context.Context) (S3Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := s3.NewFromConfig(cfg)
+	client := s3.NewFromConfig(cfg, func(options *s3.Options) {
+		if c.config.EndpointURL != "" {
+			options.BaseEndpoint = awssdk.String(c.config.EndpointURL)
+		}
+		options.UsePathStyle = c.config.S3UsePathStyle
+	})
 
 	c.mu.Lock()
 	if c.s3 == nil {
@@ -164,7 +173,11 @@ func (c *Client) secretsManagerClient(ctx context.Context) (SecretsManagerClient
 	if err != nil {
 		return nil, err
 	}
-	client := secretsmanager.NewFromConfig(cfg)
+	client := secretsmanager.NewFromConfig(cfg, func(options *secretsmanager.Options) {
+		if c.config.EndpointURL != "" {
+			options.BaseEndpoint = awssdk.String(c.config.EndpointURL)
+		}
+	})
 
 	c.mu.Lock()
 	if c.secrets == nil {
@@ -188,7 +201,11 @@ func (c *Client) sqsClient(ctx context.Context) (SQSClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := sqs.NewFromConfig(cfg)
+	client := sqs.NewFromConfig(cfg, func(options *sqs.Options) {
+		if c.config.EndpointURL != "" {
+			options.BaseEndpoint = awssdk.String(c.config.EndpointURL)
+		}
+	})
 
 	c.mu.Lock()
 	if c.sqs == nil {

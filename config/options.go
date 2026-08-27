@@ -64,6 +64,20 @@ func WithAWSRegion(region string) Option {
 	}
 }
 
+// WithAWSEndpointURL sets the AWS service endpoint override.
+func WithAWSEndpointURL(endpointURL string) Option {
+	return func(state *loadState) {
+		state.config.awsEndpointURL = endpointURL
+	}
+}
+
+// WithS3UsePathStyle enables or disables S3 path-style addressing.
+func WithS3UsePathStyle(enabled bool) Option {
+	return func(state *loadState) {
+		state.config.s3UsePathStyle = enabled
+	}
+}
+
 // WithHTTPTimeout sets the default outbound HTTP timeout.
 func WithHTTPTimeout(timeout time.Duration) Option {
 	return func(state *loadState) {
