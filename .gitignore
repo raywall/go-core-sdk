@@ -1,3 +1,4 @@
 *.out
 .instructions
 .DS_Store
+samples/application/

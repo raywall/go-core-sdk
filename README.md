@@ -86,11 +86,14 @@ Esse uso e opcional. Cada service continua podendo ser importado e configurado d
 
 Os exemplos em `samples/` sao executaveis com `go run` e tambem possuem testes. Cada sample deixa o `main` como composition root e move o comportamento para um `run` ou use case com dependencias injetadas, facilitando o uso em contextos de clean architecture, ports and adapters e testes unitarios.
 
+O sample real em `samples/application` demonstra uma aplicacao Lambda estimulada por uma S3 notification `ObjectCreated:Put`. Ela carrega uma captura JSON a partir do bucket/key recebidos no evento S3, converte registros em entidades de inconsistencia, consulta contrato via REST com token STS carregado pelo Secrets Manager, valida dados, seleciona parcelas abertas e vencidas com pagamento integral/parcial, avalia regra de negocio, publica comandos de baixa e ressarcimento em SQS, persiste a inconsistencia no DynamoDB e emite logs estruturados e histogramas Datadog. O modo padrao e real: em Lambda usa o runtime Lambda; fora de Lambda le uma `events.S3Event` do `stdin`. O modo demo com fakes locais exige `APP_EXECUTION_MODE=demo`.
+
 O sample composto em `samples/microservice` demonstra um fluxo local de microservico que combina `config`, `core`, Secrets Manager, token management, S3, REST, validation, parser, selector, decision, SQS, logs estruturados e metricas customizadas.
 
 O sample `samples/nanoservice` demonstra um servico menor, com uma unica responsabilidade: consumir eventos SQS em um worker ECS, validar o DTO, montar a entidade interna, consultar uma API REST com token, ordenar parcelas abertas/em atraso com `selector`, permitir pagamento parcial, avaliar regras de negocio e publicar um evento SQS de pagamento.
 
 ```sh
+APP_EXECUTION_MODE=demo go run ./samples/application
 go run ./samples/microservice
 go run ./samples/nanoservice
 go run ./samples/agent

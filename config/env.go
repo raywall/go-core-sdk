@@ -15,6 +15,7 @@ package config
 import (
 	"context"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -22,9 +23,10 @@ import (
 // WithEnv loads common configuration from environment variables.
 //
 // When prefix is APP, WithEnv reads APP_SERVICE_NAME, APP_ENVIRONMENT,
-// APP_VERSION, APP_AWS_REGION, APP_HTTP_TIMEOUT, APP_OBSERVABILITY_PREFIX and
-// APP_DATADOG_ADDR. AWS_REGION and AWS_DEFAULT_REGION are also considered when
-// the prefixed AWS region is absent.
+// APP_VERSION, APP_AWS_REGION, APP_AWS_ENDPOINT_URL, APP_S3_USE_PATH_STYLE,
+// APP_HTTP_TIMEOUT, APP_OBSERVABILITY_PREFIX and APP_DATADOG_ADDR. AWS_REGION
+// and AWS_DEFAULT_REGION are also considered when the prefixed AWS region is
+// absent.
 func WithEnv(prefix string) Option {
 	return WithLoader(func(_ context.Context, cfg Config) (Config, error) {
 		normalized := strings.Trim(strings.ToUpper(strings.TrimSpace(prefix)), "_")
@@ -39,6 +41,14 @@ func WithEnv(prefix string) Option {
 		cfg.environment = firstNonEmpty(os.Getenv(key("ENVIRONMENT")), cfg.environment)
 		cfg.version = firstNonEmpty(os.Getenv(key("VERSION")), cfg.version)
 		cfg.awsRegion = firstNonEmpty(os.Getenv(key("AWS_REGION")), os.Getenv("AWS_REGION"), os.Getenv("AWS_DEFAULT_REGION"), cfg.awsRegion)
+		cfg.awsEndpointURL = firstNonEmpty(os.Getenv(key("AWS_ENDPOINT_URL")), cfg.awsEndpointURL)
+		if value := strings.TrimSpace(os.Getenv(key("S3_USE_PATH_STYLE"))); value != "" {
+			parsed, err := strconv.ParseBool(value)
+			if err != nil {
+				return Config{}, InvalidConfigError{Field: key("S3_USE_PATH_STYLE"), Reason: err.Error()}
+			}
+			cfg.s3UsePathStyle = parsed
+		}
 		cfg.observability.MetricPrefix = firstNonEmpty(os.Getenv(key("OBSERVABILITY_PREFIX")), cfg.observability.MetricPrefix)
 		cfg.observability.DatadogAddress = firstNonEmpty(os.Getenv(key("DATADOG_ADDR")), cfg.observability.DatadogAddress)
 		if value := strings.TrimSpace(os.Getenv(key("HTTP_TIMEOUT"))); value != "" {

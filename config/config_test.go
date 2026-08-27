@@ -27,6 +27,8 @@ func TestLoad_EnvAndProjection(t *testing.T) {
 	t.Setenv("APP_ENVIRONMENT", "test")
 	t.Setenv("APP_VERSION", "1.4.0")
 	t.Setenv("APP_AWS_REGION", "us-east-1")
+	t.Setenv("APP_AWS_ENDPOINT_URL", "http://localstack:4566/")
+	t.Setenv("APP_S3_USE_PATH_STYLE", "true")
 	t.Setenv("APP_HTTP_TIMEOUT", "7s")
 	t.Setenv("APP_OBSERVABILITY_PREFIX", "orders")
 	t.Setenv("APP_DATADOG_ADDR", "localhost:8126")
@@ -60,8 +62,15 @@ func TestLoad_EnvAndProjection(t *testing.T) {
 	if got := cfg.ConsumerREST().HTTPTimeout; got != 7*time.Second {
 		t.Fatalf("ConsumerREST.HTTPTimeout = %s, want 7s", got)
 	}
-	if got := cfg.ConsumerAWS().Region; got != "us-east-1" {
+	awsConfig := cfg.ConsumerAWS()
+	if got := awsConfig.Region; got != "us-east-1" {
 		t.Fatalf("ConsumerAWS.Region = %q, want us-east-1", got)
+	}
+	if got := awsConfig.EndpointURL; got != "http://localstack:4566" {
+		t.Fatalf("ConsumerAWS.EndpointURL = %q, want http://localstack:4566", got)
+	}
+	if !awsConfig.S3UsePathStyle {
+		t.Fatal("ConsumerAWS.S3UsePathStyle = false, want true")
 	}
 	if _, ok := cfg.ConfiguredLogger(); !ok {
 		t.Fatal("ConfiguredLogger() ok = false, want true")
@@ -102,6 +111,14 @@ func TestLoad_RejectsInvalidDuration(t *testing.T) {
 	_, err := config.Load(context.Background(), config.WithEnv("APP"))
 	if err == nil {
 		t.Fatal("Load error = nil, want invalid duration")
+	}
+}
+
+func TestLoad_RejectsInvalidS3UsePathStyle(t *testing.T) {
+	t.Setenv("APP_S3_USE_PATH_STYLE", "sometimes")
+	_, err := config.Load(context.Background(), config.WithEnv("APP"))
+	if err == nil {
+		t.Fatal("Load error = nil, want invalid boolean")
 	}
 }
 

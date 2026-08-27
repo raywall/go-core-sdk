@@ -24,6 +24,10 @@ import (
 type Config struct {
 	// Region optionally pins the AWS region used when loading default AWS configuration.
 	Region string
+	// EndpointURL optionally overrides AWS service endpoints, useful for LocalStack.
+	EndpointURL string
+	// S3UsePathStyle forces S3 path-style addressing for local S3-compatible endpoints.
+	S3UsePathStyle bool
 }
 
 // Option customizes an AWS Client during construction.
@@ -101,6 +105,7 @@ func defaultOptions() options {
 func normalizeConfig(config Config) Config {
 	normalized := config
 	normalized.Region = strings.TrimSpace(config.Region)
+	normalized.EndpointURL = strings.TrimRight(strings.TrimSpace(config.EndpointURL), "/")
 	return normalized
 }
 
